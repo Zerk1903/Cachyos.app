@@ -1,0 +1,882 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M3U Playlist Editörü</title>
+<style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    
+    body {
+        font-family: 'Segoe UI', Tahoma, sans-serif;
+        background-color: #1e1e1e;
+        color: #e0e0e0;
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+    }
+
+    .menubar {
+        background-color: #2d2d2d;
+        border-bottom: 1px solid #444;
+        display: flex;
+        padding: 4px 8px;
+        gap: 2px;
+        flex-wrap: wrap;
+    }
+
+    .menu-group {
+        display: flex;
+        gap: 2px;
+        padding: 0 8px;
+        border-right: 1px solid #444;
+    }
+    .menu-group:last-child { border-right: none; }
+
+    .menu-title {
+        font-size: 11px;
+        color: #ffcc00;
+        font-weight: bold;
+        display: flex;
+        align-items: center;
+        padding: 4px 8px;
+    }
+
+    .btn {
+        background-color: #3a3a3a;
+        color: #e0e0e0;
+        border: 1px solid #555;
+        padding: 5px 10px;
+        font-size: 12px;
+        cursor: pointer;
+        border-radius: 3px;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        transition: background 0.15s;
+    }
+    .btn:hover { background-color: #4a4a4a; }
+    .btn:active { background-color: #555; }
+    .btn.primary { background-color: #0078d4; border-color: #0078d4; }
+    .btn.primary:hover { background-color: #106ebe; }
+    .btn.danger { background-color: #c42b1c; border-color: #c42b1c; }
+    .btn.danger:hover { background-color: #d13438; }
+    .btn.success { background-color: #107c10; border-color: #107c10; }
+    .btn.success:hover { background-color: #0e700e; }
+
+    .toolbar {
+        background-color: #252525;
+        border-bottom: 1px solid #444;
+        padding: 6px 10px;
+        display: flex;
+        gap: 6px;
+        align-items: center;
+        flex-wrap: wrap;
+    }
+
+    .toolbar-label {
+        font-size: 11px;
+        color: #aaa;
+        margin-right: 4px;
+    }
+
+    .table-container {
+        flex: 1;
+        overflow: auto;
+        background-color: #1e1e1e;
+    }
+
+    table {
+        border-collapse: collapse;
+        width: 100%;
+        min-width: 1200px;
+        font-size: 13px;
+    }
+
+    thead {
+        position: sticky;
+        top: 0;
+        z-index: 10;
+        background-color: #2d2d2d;
+    }
+
+    th {
+        background-color: #333;
+        color: #fff;
+        padding: 8px 10px;
+        text-align: left;
+        border: 1px solid #444;
+        font-weight: 600;
+        font-size: 12px;
+        user-select: none;
+    }
+
+    td {
+        border: 1px solid #3a3a3a;
+        padding: 0;
+        height: 28px;
+        max-height: 28px;
+        background-color: #1e1e1e;
+        vertical-align: middle;
+        overflow: hidden;
+    }
+
+    .row-num {
+        background-color: #2d2d2d;
+        color: #aaa;
+        text-align: center;
+        width: 40px;
+        min-width: 40px;
+        font-size: 11px;
+        padding: 4px;
+        user-select: none;
+    }
+
+    .row-check {
+        width: 30px;
+        min-width: 30px;
+        text-align: center;
+        background-color: #2d2d2d;
+    }
+
+    .cell {
+        padding: 4px 8px;
+        height: 28px;
+        min-height: 28px;
+        max-height: 28px;
+        outline: none;
+        width: 100%;
+        color: #e0e0e0;
+        cursor: text;
+        font-family: 'Segoe UI', Tahoma, sans-serif;
+        font-size: 13px;
+        line-height: 20px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        word-break: keep-all;
+    }
+    .cell:focus {
+        background-color: #0078d4;
+        color: #fff;
+        overflow-x: auto;
+        text-overflow: clip;
+    }
+
+    .cell-url { color: #4fc3f7; }
+    .cell-logo { color: #81c784; }
+    .cell-status { color: #ffcc00; text-align: center; font-size: 11px; }
+
+    tr:hover td { background-color: #2a2a2a; }
+    tr.selected td { background-color: #003a6b; }
+    tr.selected .row-num { background-color: #003a6b; color: #fff; }
+
+    .statusbar {
+        background-color: #0078d4;
+        color: #fff;
+        padding: 4px 12px;
+        font-size: 12px;
+        display: flex;
+        justify-content: space-between;
+    }
+
+    .modal-overlay {
+        display: none;
+        position: fixed;
+        top: 0; left: 0; right: 0; bottom: 0;
+        background: rgba(0,0,0,0.6);
+        z-index: 100;
+        justify-content: center;
+        align-items: center;
+    }
+    .modal-overlay.active { display: flex; }
+    .modal {
+        background: #2d2d2d;
+        border: 1px solid #555;
+        border-radius: 6px;
+        padding: 20px;
+        min-width: 400px;
+        max-width: 600px;
+    }
+    .modal h3 { margin-bottom: 12px; color: #ffcc00; }
+    .modal textarea {
+        width: 100%;
+        min-height: 200px;
+        background: #1e1e1e;
+        color: #e0e0e0;
+        border: 1px solid #555;
+        padding: 8px;
+        font-family: Consolas, monospace;
+        font-size: 12px;
+        resize: vertical;
+    }
+    .modal-actions {
+        margin-top: 12px;
+        display: flex;
+        gap: 8px;
+        justify-content: flex-end;
+    }
+
+    .col-logo { width: 180px; }
+    .col-group { width: 120px; }
+    .col-name { width: 250px; }
+    .col-year { width: 70px; }
+    .col-tvgid { width: 120px; }
+    .col-url { width: 400px; }
+    .col-status { width: 80px; }
+
+    input[type="file"] { display: none; }
+
+    .paste-clean {
+        font-family: inherit !important;
+        font-size: inherit !important;
+        font-weight: inherit !important;
+        color: inherit !important;
+    }
+</style>
+</head>
+<body>
+
+<div class="menubar">
+    <div class="menu-group">
+        <div class="menu-title">📁 Dosya</div>
+        <button class="btn" onclick="document.getElementById('fileInput').click()">📂 Aç</button>
+        <button class="btn primary" onclick="addRow()">➕ Ekle</button>
+        <button class="btn" onclick="exportM3U()">💾 Kaydet</button>
+        <button class="btn success" onclick="downloadM3U()">⬇️ İndir</button>
+    </div>
+    <div class="menu-group">
+        <div class="menu-title">✏️ Düzenle</div>
+        <button class="btn" onclick="addRow()">➕ Yeni Satır</button>
+        <button class="btn danger" onclick="deleteSelected()">🗑️ Sil</button>
+        <button class="btn" onclick="clearAll()">🧹 Tümünü Temizle</button>
+        <button class="btn" onclick="duplicateRow()">📋 Çoğalt</button>
+    </div>
+    <div class="menu-group">
+        <div class="menu-title">🔍 Ara</div>
+        <input type="text" id="searchBox" placeholder="İçerik adı, grup, yıl veya URL ara..." 
+               style="padding:5px 8px; background:#1e1e1e; color:#fff; border:1px solid #555; border-radius:3px; font-size:12px; width:280px;"
+               oninput="searchTable(this.value)">
+    </div>
+    <div class="menu-group">
+        <div class="menu-title">⚙️ Ayar</div>
+        <button class="btn" onclick="showSettings()">🔑 User-Agent Ayarı</button>
+    </div>
+</div>
+
+<div class="toolbar">
+    <span class="toolbar-label">Hızlı İşlem:</span>
+    <button class="btn primary" onclick="addRow()">➕ Satır Ekle</button>
+    <button class="btn danger" onclick="deleteSelected()">🗑️ Seçili Sil</button>
+    <button class="btn" onclick="moveUp()">⬆️ Yukarı</button>
+    <button class="btn" onclick="moveDown()">⬇️ Aşağı</button>
+    <button class="btn success" onclick="downloadM3U()">⬇️ M3U İndir</button>
+    <button class="btn" onclick="copySelected()">📋 Kopyala</button>
+    <span style="flex:1"></span>
+    <span class="toolbar-label" id="rowCount">Toplam: 0 satır</span>
+</div>
+
+<div class="table-container">
+    <table id="mainTable">
+        <thead>
+            <tr>
+                <th class="row-check"><input type="checkbox" id="selectAll" onchange="toggleSelectAll(this)"></th>
+                <th style="width:40px">#</th>
+                <th class="col-logo">Logo (URL)</th>
+                <th class="col-group">Tür/Grup</th>
+                <th class="col-name">İçerik Adı</th>
+                <th class="col-year">Yıl</th>
+                <th class="col-tvgid">tvg-id (TMDB)</th>
+                <th class="col-url">URL</th>
+                <th class="col-status">Durum</th>
+            </tr>
+        </thead>
+        <tbody id="tableBody"></tbody>
+    </table>
+</div>
+
+<div class="statusbar">
+    <span id="statusText">Hazır | İpucu: Ok tuşları ile gezin, Enter ile alt satıra geçin, Tab ile sağa geçin</span>
+    <span id="selectedCount">Seçili: 0</span>
+</div>
+
+<input type="file" id="fileInput" accept=".m3u,.m3u8,.txt" onchange="importFile(event)">
+
+<div class="modal-overlay" id="settingsModal">
+    <div class="modal">
+        <h3>🔑 User-Agent & Referer Ayarları</h3>
+        <p style="font-size:12px; color:#aaa; margin-bottom:10px;">
+            Her satıra otomatik eklenecek VLC ayarları.
+        </p>
+        <label style="font-size:12px; color:#ccc;">User-Agent:</label>
+        <input type="text" id="settingUA" value="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36"
+               style="width:100%; padding:6px; background:#1e1e1e; color:#fff; border:1px solid #555; margin-bottom:10px; font-size:12px;">
+        <label style="font-size:12px; color:#ccc;">Referer:</label>
+        <input type="text" id="settingRef" value="https://vidload.top/"
+               style="width:100%; padding:6px; background:#1e1e1e; color:#fff; border:1px solid #555; margin-bottom:10px; font-size:12px;">
+        <div class="modal-actions">
+            <button class="btn" onclick="closeSettings()">İptal</button>
+            <button class="btn primary" onclick="saveSettings()">Kaydet</button>
+        </div>
+    </div>
+</div>
+
+<div class="modal-overlay" id="previewModal">
+    <div class="modal" style="min-width:600px;">
+        <h3>📄 M3U Çıktısı</h3>
+        <textarea id="previewText" readonly></textarea>
+        <div class="modal-actions">
+            <button class="btn" onclick="closePreview()">Kapat</button>
+            <button class="btn success" onclick="copyPreview()">📋 Kopyala</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    let rows = [];
+    let settings = {
+        userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36",
+        referer: "https://vidload.top/"
+    };
+
+    // Sütun sırası (navigasyon için)
+    const FIELDS = ['logo', 'group', 'name', 'year', 'tvgid', 'url'];
+
+    window.onload = function() {
+        for (let i = 0; i < 5; i++) addRow();
+        updateStatus();
+    };
+
+    function addRow(data = null, focus = true) {
+        const row = {
+            id: Date.now() + Math.random(),
+            logo: data?.logo || '',
+            group: data?.group || '',
+            name: data?.name || '',
+            year: data?.year || '',
+            tvgid: data?.tvgid || '',
+            url: data?.url || '',
+            status: data?.status || 'Yeni',
+            selected: false
+        };
+        rows.unshift(row);
+        renderTable();
+        updateStatus();
+        
+        if (!data && focus) {
+            setTimeout(() => {
+                focusCell(0, 2); // Yeni satırın "İçerik Adı" hücresine odaklan
+            }, 50);
+        }
+    }
+
+    function renderTable() {
+        const tbody = document.getElementById('tableBody');
+        tbody.innerHTML = '';
+
+        rows.forEach((row, rowIndex) => {
+            const tr = document.createElement('tr');
+            if (row.selected) tr.classList.add('selected');
+
+            tr.innerHTML = `
+                <td class="row-check">
+                    <input type="checkbox" ${row.selected ? 'checked' : ''} onchange="toggleRow(${rowIndex}, this.checked)">
+                </td>
+                <td class="row-num">${rowIndex + 1}</td>
+                <td><div class="cell cell-logo" contenteditable="true" data-row="${rowIndex}" data-col="0" data-field="logo">${escapeHtml(row.logo)}</div></td>
+                <td><div class="cell" contenteditable="true" data-row="${rowIndex}" data-col="1" data-field="group">${escapeHtml(row.group)}</div></td>
+                <td><div class="cell cell-name" contenteditable="true" data-row="${rowIndex}" data-col="2" data-field="name">${escapeHtml(row.name)}</div></td>
+                <td><div class="cell" contenteditable="true" data-row="${rowIndex}" data-col="3" data-field="year">${escapeHtml(row.year)}</div></td>
+                <td><div class="cell" contenteditable="true" data-row="${rowIndex}" data-col="4" data-field="tvgid">${escapeHtml(row.tvgid)}</div></td>
+                <td><div class="cell cell-url" contenteditable="true" data-row="${rowIndex}" data-col="5" data-field="url">${escapeHtml(row.url)}</div></td>
+                <td><div class="cell cell-status">${escapeHtml(row.status)}</div></td>
+            `;
+
+            tr.querySelectorAll('.cell[contenteditable]').forEach(cell => {
+                // Düz metin yapıştırma: satır sonlarını ve fazla boşlukları temizle (satır büyümesin)
+                cell.addEventListener('paste', function(e) {
+                    e.preventDefault();
+                    let text = (e.clipboardData || window.clipboardData).getData('text/plain') || '';
+                    // Yeni satır, tab ve fazla boşlukları tek boşluğa çevir
+                    text = text.replace(/[\r\n\t]+/g, ' ').replace(/\s{2,}/g, ' ').trim();
+                    document.execCommand('insertText', false, text);
+                });
+
+                // Yazarken de satır sonu oluşmasını engelle (ör. bazı tarayıcılar)
+                cell.addEventListener('input', function() {
+                    if (this.innerText.indexOf('\n') !== -1 || this.innerHTML.indexOf('<br') !== -1) {
+                        const cleaned = this.innerText.replace(/[\r\n]+/g, ' ').replace(/\s{2,}/g, ' ');
+                        // İmleç konumunu korumaya çalış
+                        this.textContent = cleaned;
+                        // İmleci sona al
+                        const range = document.createRange();
+                        const sel = window.getSelection();
+                        range.selectNodeContents(this);
+                        range.collapse(false);
+                        sel.removeAllRanges();
+                        sel.addRange(range);
+                    }
+                });
+
+                // Blur'da veriyi kaydet + satır sonlarını temizle
+                cell.addEventListener('blur', function() {
+                    const r = parseInt(this.dataset.row);
+                    const field = this.dataset.field;
+                    if (!rows[r]) return;
+                    // Tek satıra zorla
+                    let val = this.innerText.replace(/[\r\n\t]+/g, ' ').replace(/\s{2,}/g, ' ').trim();
+                    this.textContent = val; // DOM'u da temizle
+                    rows[r][field] = val;
+                    // Status güncelle
+                    if (field === 'url') {
+                        rows[r].status = rows[r].url ? 'Hazır' : (rows[r].name ? 'URL eksik' : 'Yeni');
+                    } else if (field === 'name' && !rows[r].url) {
+                        rows[r].status = rows[r].name ? 'URL eksik' : 'Yeni';
+                    }
+                    // Status hücresini anlık güncelle (tam render etmeden)
+                    const statusCell = this.closest('tr')?.querySelector('.cell-status');
+                    if (statusCell) statusCell.textContent = rows[r].status;
+                    updateStatus();
+                });
+
+                // Klavye navigasyonu
+                cell.addEventListener('keydown', function(e) {
+                    const r = parseInt(this.dataset.row);
+                    const c = parseInt(this.dataset.col);
+
+                    if (e.key === 'ArrowDown') {
+                        e.preventDefault();
+                        if (r < rows.length - 1) focusCell(r + 1, c);
+                    }
+                    else if (e.key === 'ArrowUp') {
+                        e.preventDefault();
+                        if (r > 0) focusCell(r - 1, c);
+                    }
+                    else if (e.key === 'ArrowRight') {
+                        const cursorAtEnd = isCursorAtEnd(this);
+                        if (cursorAtEnd) {
+                            e.preventDefault();
+                            if (c < FIELDS.length - 1) {
+                                focusCell(r, c + 1);
+                            } else if (r < rows.length - 1) {
+                                focusCell(r + 1, 0);
+                            }
+                        }
+                    }
+                    else if (e.key === 'ArrowLeft') {
+                        const cursorAtStart = isCursorAtStart(this);
+                        if (cursorAtStart) {
+                            e.preventDefault();
+                            if (c > 0) {
+                                focusCell(r, c - 1);
+                            } else if (r > 0) {
+                                focusCell(r - 1, FIELDS.length - 1);
+                            }
+                        }
+                    }
+                    else if (e.key === 'Enter') {
+                        e.preventDefault();
+                        this.blur(); // Önce mevcut hücreyi kaydet
+                        if (r < rows.length - 1) {
+                            focusCell(r + 1, c);
+                        } else {
+                            // Son satırdaysa yeni satır ekle ve odaklan
+                            addRow(null, true);
+                        }
+                    }
+                    // TAB / SHIFT+TAB düzeltildi
+                    else if (e.key === 'Tab') {
+                        e.preventDefault();
+                        if (e.shiftKey) {
+                            // Sola / üst satırın sonuna
+                            if (c > 0) {
+                                focusCell(r, c - 1);
+                            } else if (r > 0) {
+                                focusCell(r - 1, FIELDS.length - 1);
+                            }
+                        } else {
+                            // Sağa / alt satırın başına
+                            if (c < FIELDS.length - 1) {
+                                focusCell(r, c + 1);
+                            } else if (r < rows.length - 1) {
+                                focusCell(r + 1, 0);
+                            } else {
+                                // Son hücredeyse yeni satır ekle
+                                addRow(null, true);
+                            }
+                        }
+                    }
+                });
+            });
+
+            tr.addEventListener('click', function(e) {
+                if (e.target.tagName === 'INPUT' || e.target.isContentEditable) return;
+                rows[rowIndex].selected = !rows[rowIndex].selected;
+                renderTable();
+                updateStatus();
+            });
+
+            tbody.appendChild(tr);
+        });
+
+        document.getElementById('rowCount').textContent = `Toplam: ${rows.length} satır`;
+        // Select-all checkbox senkronu
+        const selectAll = document.getElementById('selectAll');
+        if (selectAll) {
+            selectAll.checked = rows.length > 0 && rows.every(r => r.selected);
+            selectAll.indeterminate = rows.some(r => r.selected) && !selectAll.checked;
+        }
+    }
+
+    function focusCell(row, col) {
+        const cell = document.querySelector(`.cell[data-row="${row}"][data-col="${col}"]`);
+        if (cell) {
+            cell.focus();
+            const range = document.createRange();
+            const sel = window.getSelection();
+            range.selectNodeContents(cell);
+            range.collapse(false);
+            sel.removeAllRanges();
+            sel.addRange(range);
+        }
+    }
+
+    function isCursorAtEnd(el) {
+        const sel = window.getSelection();
+        if (sel.rangeCount === 0) return false;
+        const range = sel.getRangeAt(0);
+        const preCaretRange = range.cloneRange();
+        preCaretRange.selectNodeContents(el);
+        preCaretRange.setEnd(range.endContainer, range.endOffset);
+        return preCaretRange.toString().length === el.innerText.length;
+    }
+
+    function isCursorAtStart(el) {
+        const sel = window.getSelection();
+        if (sel.rangeCount === 0) return false;
+        const range = sel.getRangeAt(0);
+        const preCaretRange = range.cloneRange();
+        preCaretRange.selectNodeContents(el);
+        preCaretRange.setEnd(range.startContainer, range.startOffset);
+        return preCaretRange.toString().length === 0;
+    }
+
+    function toggleRow(index, checked) {
+        rows[index].selected = checked;
+        renderTable();
+        updateStatus();
+    }
+
+    function toggleSelectAll(checkbox) {
+        rows.forEach(r => r.selected = checkbox.checked);
+        renderTable();
+        updateStatus();
+    }
+
+    function deleteSelected() {
+        const selected = rows.filter(r => r.selected);
+        if (selected.length === 0) {
+            alert('Önce silmek istediğiniz satırları seçin!');
+            return;
+        }
+        if (!confirm(`${selected.length} satır silinecek. Emin misiniz?`)) return;
+        rows = rows.filter(r => !r.selected);
+        if (rows.length === 0) addRow(null, false);
+        renderTable();
+        updateStatus();
+    }
+
+    function clearAll() {
+        if (!confirm('Tüm liste silinecek. Emin misiniz?')) return;
+        rows = [];
+        for (let i = 0; i < 5; i++) addRow(null, false);
+        renderTable();
+        updateStatus();
+    }
+
+    function duplicateRow() {
+        const selected = rows.filter(r => r.selected);
+        if (selected.length === 0) {
+            alert('Önce çoğaltmak istediğiniz satırı seçin!');
+            return;
+        }
+        // Seçili satırların hemen altına ekle (sırayı koruyarak)
+        const newRows = [];
+        rows.forEach(r => {
+            newRows.push(r);
+            if (r.selected) {
+                newRows.push({
+                    ...r,
+                    id: Date.now() + Math.random(),
+                    selected: false,
+                    status: r.status === 'Yeni' ? 'Yeni' : 'Hazır'
+                });
+            }
+        });
+        rows = newRows;
+        renderTable();
+        updateStatus();
+        setStatus(`${selected.length} satır çoğaltıldı`);
+    }
+
+    // Çoklu seçili satırları bir blok olarak yukarı taşı
+    function moveUp() {
+        const indices = [];
+        rows.forEach((r, i) => { if (r.selected) indices.push(i); });
+        if (indices.length === 0) return;
+        if (indices[0] === 0) return; // En üstteyse taşıma
+
+        // Blok halinde bir yukarı kaydır
+        for (let i = 0; i < indices.length; i++) {
+            const idx = indices[i];
+            [rows[idx - 1], rows[idx]] = [rows[idx], rows[idx - 1]];
+            indices[i] = idx - 1;
+        }
+        renderTable();
+        updateStatus();
+    }
+
+    // Çoklu seçili satırları bir blok olarak aşağı taşı
+    function moveDown() {
+        const indices = [];
+        rows.forEach((r, i) => { if (r.selected) indices.push(i); });
+        if (indices.length === 0) return;
+        if (indices[indices.length - 1] === rows.length - 1) return; // En alttaysa taşıma
+
+        // Blok halinde bir aşağı kaydır (sondan başla)
+        for (let i = indices.length - 1; i >= 0; i--) {
+            const idx = indices[i];
+            [rows[idx], rows[idx + 1]] = [rows[idx + 1], rows[idx]];
+            indices[i] = idx + 1;
+        }
+        renderTable();
+        updateStatus();
+    }
+
+    function searchTable(query) {
+        const q = query.toLowerCase().trim();
+        const trs = document.querySelectorAll('#tableBody tr');
+        trs.forEach((tr, i) => {
+            const row = rows[i];
+            if (!row) {
+                tr.style.display = 'none';
+                return;
+            }
+            const match = !q ||
+                (row.name && row.name.toLowerCase().includes(q)) ||
+                (row.url && row.url.toLowerCase().includes(q)) ||
+                (row.group && row.group.toLowerCase().includes(q)) ||
+                (row.year && row.year.toLowerCase().includes(q)) ||
+                (row.tvgid && row.tvgid.toLowerCase().includes(q)) ||
+                (row.logo && row.logo.toLowerCase().includes(q));
+            tr.style.display = match ? '' : 'none';
+        });
+    }
+
+    function buildM3U() {
+        const validRows = rows.filter(r => r.name && r.url);
+        let m3u = '#EXTM3U\n';
+        validRows.forEach(r => {
+            // Yıl varsa isme ekle (isteğe bağlı, orijinal ismi koruyarak)
+            let displayName = r.name;
+            if (r.year) displayName = `${r.name} (${r.year})`;
+
+            m3u += `#EXTINF:-1`;
+            if (r.tvgid) m3u += ` tvg-id="${r.tvgid}"`;
+            if (r.logo) m3u += ` tvg-logo="${r.logo}"`;
+            if (r.group) m3u += ` group-title="${r.group}"`;
+            m3u += `,${displayName}\n`;
+            m3u += `#EXTVLCOPT:http-user-agent=${settings.userAgent}\n`;
+            m3u += `#EXTVLCOPT:http-referrer=${settings.referer}\n`;
+            m3u += `${r.url}\n`;
+        });
+        return m3u.trim();
+    }
+
+    function exportM3U() {
+        const m3u = buildM3U();
+        document.getElementById('previewText').value = m3u;
+        document.getElementById('previewModal').classList.add('active');
+    }
+
+    function closePreview() {
+        document.getElementById('previewModal').classList.remove('active');
+    }
+
+    function copyPreview() {
+        const ta = document.getElementById('previewText');
+        ta.select();
+        navigator.clipboard.writeText(ta.value).then(() => {
+            alert('Kopyalandı!');
+        }).catch(() => {
+            document.execCommand('copy');
+            alert('Kopyalandı!');
+        });
+    }
+
+    function downloadM3U() {
+        const m3u = buildM3U();
+        if (!m3u || m3u === '#EXTM3U') {
+            alert('İndirilecek geçerli satır yok! En az bir satırda İsim ve URL olmalı.');
+            return;
+        }
+        const blob = new Blob([m3u], { type: 'audio/x-mpegurl' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'playlist.m3u';
+        a.click();
+        URL.revokeObjectURL(url);
+        setStatus('Playlist indirildi!');
+    }
+
+    function importFile(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            parseM3U(e.target.result);
+        };
+        reader.readAsText(file);
+        event.target.value = '';
+    }
+
+    function parseM3U(content) {
+        const lines = content.split(/\r?\n/).map(l => l.trim());
+        let current = null;
+        let imported = 0;
+        const newRows = [];
+
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
+            if (line.startsWith('#EXTINF:')) {
+                current = { logo: '', group: '', name: '', year: '', tvgid: '', url: '', status: 'İçe Aktarıldı', selected: false };
+                const logoMatch = line.match(/tvg-logo="([^"]*)"/i);
+                const groupMatch = line.match(/group-title="([^"]*)"/i);
+                const tvgidMatch = line.match(/tvg-id="([^"]*)"/i);
+                const nameMatch = line.match(/,(.+)$/);
+                if (logoMatch) current.logo = logoMatch[1];
+                if (groupMatch) current.group = groupMatch[1];
+                if (tvgidMatch) current.tvgid = tvgidMatch[1];
+                if (nameMatch) {
+                    let name = nameMatch[1].trim();
+                    // İsim sonunda (YYYY) varsa yılı ayır
+                    const yearMatch = name.match(/\((\d{4})\)\s*$/);
+                    if (yearMatch) {
+                        current.year = yearMatch[1];
+                        name = name.replace(/\s*\(\d{4}\)\s*$/, '').trim();
+                    }
+                    current.name = name;
+                }
+            } else if (line && !line.startsWith('#') && current) {
+                current.url = line;
+                newRows.push(current);
+                current = null;
+                imported++;
+            }
+        }
+
+        if (imported > 0) {
+            rows = newRows; // Mevcut satırları temizle, yenileriyle değiştir
+            renderTable();
+            updateStatus();
+            setStatus(`${imported} kanal içe aktarıldı!`);
+        } else {
+            alert('Geçerli M3U içeriği bulunamadı!');
+        }
+    }
+
+    function showSettings() {
+        document.getElementById('settingUA').value = settings.userAgent;
+        document.getElementById('settingRef').value = settings.referer;
+        document.getElementById('settingsModal').classList.add('active');
+    }
+
+    function closeSettings() {
+        document.getElementById('settingsModal').classList.remove('active');
+    }
+
+    function saveSettings() {
+        settings.userAgent = document.getElementById('settingUA').value.trim();
+        settings.referer = document.getElementById('settingRef').value.trim();
+        closeSettings();
+        setStatus('Ayarlar kaydedildi!');
+    }
+
+    function copySelected() {
+        const selected = rows.filter(r => r.selected && r.name && r.url);
+        if (selected.length === 0) {
+            alert('Önce kopyalamak istediğiniz satırları seçin (İsim + URL dolu olmalı)!');
+            return;
+        }
+        let m3u = '';
+        selected.forEach(r => {
+            let displayName = r.name;
+            if (r.year) displayName = `${r.name} (${r.year})`;
+            m3u += `#EXTINF:-1`;
+            if (r.tvgid) m3u += ` tvg-id="${r.tvgid}"`;
+            if (r.logo) m3u += ` tvg-logo="${r.logo}"`;
+            if (r.group) m3u += ` group-title="${r.group}"`;
+            m3u += `,${displayName}\n`;
+            m3u += `#EXTVLCOPT:http-user-agent=${settings.userAgent}\n`;
+            m3u += `#EXTVLCOPT:http-referrer=${settings.referer}\n`;
+            m3u += `${r.url}\n`;
+        });
+        navigator.clipboard.writeText(m3u).then(() => {
+            setStatus(`${selected.length} satır panoya kopyalandı!`);
+        }).catch(() => {
+            // Fallback
+            const ta = document.createElement('textarea');
+            ta.value = m3u;
+            document.body.appendChild(ta);
+            ta.select();
+            document.execCommand('copy');
+            document.body.removeChild(ta);
+            setStatus(`${selected.length} satır panoya kopyalandı!`);
+        });
+    }
+
+    function escapeHtml(text) {
+        if (text == null) return '';
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    function updateStatus() {
+        const total = rows.length;
+        const filled = rows.filter(r => r.name && r.url).length;
+        const selected = rows.filter(r => r.selected).length;
+        document.getElementById('selectedCount').textContent = `Seçili: ${selected} | Dolu: ${filled}/${total}`;
+    }
+
+    function setStatus(text) {
+        document.getElementById('statusText').textContent = text;
+        setTimeout(() => {
+            document.getElementById('statusText').textContent = 'Hazır | İpucu: Ok tuşları ile gezin, Enter ile alt satıra geçin, Tab ile sağa geçin';
+        }, 3000);
+    }
+
+    document.addEventListener('keydown', function(e) {
+        // Ctrl+S → indir
+        if (e.ctrlKey && e.key === 's') {
+            e.preventDefault();
+            downloadM3U();
+        }
+        // Ctrl+N → yeni satır
+        if (e.ctrlKey && e.key === 'n') {
+            e.preventDefault();
+            addRow();
+        }
+        // Delete → seçili sil (hücre içinde değilse)
+        if (e.key === 'Delete') {
+            const active = document.activeElement;
+            if (active && active.isContentEditable) return;
+            deleteSelected();
+        }
+    });
+</script>
+
+</body>
+</html>
