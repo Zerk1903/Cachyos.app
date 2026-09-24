@@ -1,0 +1,1225 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>IPTV Editor v1.0.6</title>
+<style>
+:root{
+  /* Referans gorselden ornekleneN GRI palet */
+  --bg-app:#2b2b2b;      /* araç çubuğu / sayfa */
+  --bg-table:#3c3f41;    /* tablo alanı */
+  --bg-row:#3c3f41;      /* satır */
+  --bg-row-alt:#3f4244;  /* zebra */
+  --bg-hover:#45494b;
+  --bg-btn:#3a3a3a;      /* buton dolgu */
+  --bg-btn-hi:#464646;   /* buton hover */
+  --bg-input:#2b2b2b;
+  --line:#555555;        /* buton kenarlık */
+  --line-soft:#4e5254;   /* tablo ayıraç */
+  --line-hard:#323232;
+
+  --txt-1:#dddddd;
+  --txt-2:#b4b4b4;
+  --txt-3:#8a8a8a;
+
+  --accent:#4a90d9;
+  --accent-soft:#3d5a75;
+
+  --ok:#5fb85f;   --ok-bg:#2f3d2f;
+  --err:#e05c5c;  --err-bg:#3f2e2e;
+  --warn:#e0b34a; --warn-bg:#3d3628;
+}
+
+*{box-sizing:border-box;}
+html,body{height:100%;}
+body{
+  margin:0;background:var(--bg-app);color:var(--txt-1);
+  display:flex;flex-direction:column;
+  font-family:"Segoe UI",Ubuntu,Cantarell,-apple-system,BlinkMacSystemFont,Arial,sans-serif;
+  font-size:13px;-webkit-font-smoothing:antialiased;
+}
+
+/* ══ ARAÇ ÇUBUĞU: gruplu (referanstaki gibi) ══ */
+header{
+  flex-shrink:0;
+  background:var(--bg-app);
+  padding:4px 6px 6px;
+  display:flex;flex-wrap:wrap;align-items:flex-start;
+  gap:6px;
+  border-bottom:1px solid var(--line-hard);
+}
+.tb-group{
+  border:1px solid #4a4a4a;
+  border-radius:4px;
+  padding:3px 6px 5px;
+  position:relative;
+  display:flex;flex-direction:column;gap:3px;
+}
+.tb-group.grow{flex:1;min-width:280px;}
+.tb-title{
+  font-size:10.5px;color:#9a9a9a;
+  line-height:1;padding:0 2px 1px;
+  white-space:nowrap;user-select:none;
+}
+.tb-row{display:flex;gap:4px;align-items:center;flex-wrap:wrap;}
+
+/* ══ BUTONLAR: #3a3a3a dolgu + #555 kenarlık (referans) ══ */
+button,.btn{
+  display:inline-flex;align-items:center;gap:5px;
+  padding:5px 9px;
+  height:28px;
+  border:1px solid var(--line);
+  border-radius:4px;
+  background:var(--bg-btn);
+  color:var(--txt-1);
+  cursor:pointer;
+  white-space:nowrap;
+  font-size:12.5px;
+  font-family:inherit;
+  line-height:1;
+  transition:background .1s,border-color .1s;
+}
+button:hover:not(:disabled),.btn:hover{background:var(--bg-btn-hi);border-color:#6a6a6a;}
+button:active:not(:disabled),.btn:active{background:#333;}
+button:focus-visible{outline:1px solid var(--accent);outline-offset:1px;}
+button:disabled{opacity:.45;cursor:default;}
+.btn input[type=file]{display:none;}
+.ic{font-size:13px;line-height:1;}
+
+/* renkli metin varyantlari (referanstaki gibi sadece YAZI renkli) */
+button.danger{color:#e07b7b;}
+button.danger:hover:not(:disabled){background:#453232;border-color:#7a5555;}
+
+select,input[type=text],input:not([type]){
+  height:28px;
+  padding:0 7px;
+  border:1px solid var(--line);
+  border-radius:4px;
+  background:var(--bg-input);
+  color:var(--txt-1);
+  outline:none;
+  font-family:inherit;font-size:12.5px;
+}
+select{cursor:pointer;min-width:150px;}
+input::placeholder{color:#777;}
+input:focus,select:focus{border-color:var(--accent);}
+#search{flex:1;min-width:160px;}
+
+.tb-status{
+  display:flex;align-items:center;gap:10px;
+  padding:0 4px;margin-top:18px;
+  font-size:12px;color:var(--txt-3);
+  font-variant-numeric:tabular-nums;
+}
+#selectionInfo{color:#7fb4e8;}
+
+/* ══ TABLO ══ */
+.container{display:flex;flex:1;min-height:0;}
+.main{flex:1;overflow:auto;position:relative;background:var(--bg-table);}
+
+table{width:100%;border-collapse:separate;border-spacing:0;table-layout:fixed;}
+thead th{
+  position:sticky;top:0;z-index:5;
+  background:var(--bg-app);
+  height:30px;
+  border-bottom:1px solid var(--line-soft);
+  border-right:1px solid #4a4a4a;
+  padding:0 8px;
+  text-align:left;
+  font-size:12px;font-weight:600;color:var(--txt-2);
+}
+thead th:last-child{border-right:none;}
+tbody td{
+  height:36px;
+  box-sizing:border-box;
+  border-bottom:1px solid #474a4c;
+  padding:0 8px;
+  background:var(--bg-row);
+  overflow:hidden;white-space:nowrap;
+}
+tbody tr:nth-child(even) td{background:var(--bg-row-alt);}
+tbody tr:hover td{background:var(--bg-hover);}
+tbody tr.spacer td{padding:0;border:none;background:var(--bg-table);height:auto;}
+tbody tr.spacer:hover td{background:var(--bg-table);}
+
+td input[type="text"]{
+  width:100%;height:26px;padding:0 5px;
+  background:transparent;border:1px solid transparent;border-radius:3px;
+  color:var(--txt-1);outline:none;text-overflow:ellipsis;
+  font-family:inherit;font-size:12.5px;
+}
+td input[type="text"]:hover{background:rgba(255,255,255,.05);}
+td input[type="text"]:focus{background:var(--bg-input);border-color:var(--accent);}
+
+tbody tr.kb-active td{background:#4a5058;}
+tbody tr.kb-active td:first-child{box-shadow:inset 3px 0 0 var(--accent);}
+
+.delete{
+  background:transparent;color:#9a9a9a;border:1px solid transparent;
+  padding:2px 7px;height:24px;border-radius:3px;cursor:pointer;
+  font-size:13px;font-weight:600;line-height:1;
+}
+.delete:hover{background:#4a3535;color:#e88;border-color:#7a5555;}
+#deleteSelected{display:none;}
+
+input[type="checkbox"]{width:14px;height:14px;cursor:pointer;accent-color:var(--accent);}
+th.cb-col,td.cb-col{width:34px;text-align:center;}
+th.st-col,td.st-col{width:94px;text-align:center;}
+th.logo-col,td.logo-col{width:185px;}
+th.name-col{width:22%;}
+th.grp-col{width:15%;}
+th.del-col,td.del-col{width:48px;text-align:center;}
+
+.status{
+  display:inline-block;padding:2px 8px;border-radius:3px;
+  font-size:11px;font-weight:600;cursor:pointer;user-select:none;
+  white-space:nowrap;border:1px solid transparent;
+}
+.status:hover{filter:brightness(1.25);}
+.st-ok   {background:var(--ok-bg);  color:var(--ok);   border-color:#3f5a3f;}
+.st-fail {background:var(--err-bg); color:var(--err);  border-color:#6a4444;}
+.st-wait {background:var(--warn-bg);color:var(--warn); border-color:#5c4f2e;}
+.st-idle {background:#454545;       color:#8a8a8a;     border-color:#555;}
+
+.logo-wrap{display:flex;align-items:center;gap:5px;}
+.logo-wrap input{flex:1;min-width:0;}
+.logo-thumb{width:22px;height:22px;object-fit:contain;border-radius:3px;background:#2b2b2b;flex-shrink:0;}
+.btn-logo{
+  padding:2px 6px;height:24px;font-size:11px;border-radius:3px;
+  background:var(--bg-btn);color:var(--txt-2);
+  border:1px solid var(--line);cursor:pointer;white-space:nowrap;flex-shrink:0;
+}
+.btn-logo:hover{background:var(--bg-btn-hi);color:var(--txt-1);}
+
+#emptyMsg{display:none;padding:44px 20px;text-align:center;color:var(--txt-3);font-size:13px;}
+
+/* ══ MODAL ══ */
+.modal-overlay{
+  display:none;position:fixed;inset:0;
+  background:rgba(0,0,0,.7);z-index:1000;
+  align-items:center;justify-content:center;
+}
+.modal-overlay.open{display:flex;}
+.modal{
+  background:#3c3f41;border:1px solid #555;
+  border-radius:6px;padding:18px;
+  width:600px;max-width:95vw;max-height:85vh;
+  display:flex;flex-direction:column;gap:12px;
+  box-shadow:0 12px 40px rgba(0,0,0,.6);
+}
+.modal h3{margin:0;font-size:14px;color:var(--txt-1);font-weight:600;}
+.modal textarea{
+  flex:1;min-height:200px;resize:vertical;
+  background:#2b2b2b;color:var(--txt-1);border:1px solid #555;
+  border-radius:4px;padding:9px;
+  font-family:ui-monospace,Consolas,monospace;font-size:12.5px;
+  outline:none;line-height:1.6;
+}
+.modal textarea:focus{border-color:var(--accent);}
+.modal-footer{display:flex;gap:8px;justify-content:flex-end;}
+.modal-footer button{padding:6px 16px;height:30px;}
+
+th.sortable{cursor:pointer;user-select:none;}
+th.sortable:hover{background:#3a3a3a;color:var(--txt-1);}
+th.sortable .arrow{margin-left:4px;opacity:.4;font-size:10px;}
+th.sortable.asc .arrow::after{content:"\25B2";opacity:1;color:var(--accent);}
+th.sortable.desc .arrow::after{content:"\25BC";opacity:1;color:var(--accent);}
+th.sortable:not(.asc):not(.desc) .arrow::after{content:"\21C5";}
+
+/* ══ PROGRESS ══ */
+#progressBar{
+  position:fixed;bottom:0;left:0;right:0;
+  background:var(--bg-app);padding:7px 12px;
+  font-size:12px;color:var(--txt-2);
+  border-top:1px solid var(--line);z-index:999;display:none;
+  align-items:center;gap:12px;
+}
+#progressBar .bar{flex:1;height:5px;background:#555;border-radius:3px;overflow:hidden;}
+#progressBar .bar-fill{height:100%;background:var(--accent);border-radius:3px;transition:width .2s;}
+#progressCount{font-variant-numeric:tabular-nums;color:var(--txt-3);}
+
+/* Kaydirma cubugu */
+.main::-webkit-scrollbar{width:12px;height:12px;}
+.main::-webkit-scrollbar-track{background:#2f3234;}
+.main::-webkit-scrollbar-thumb{background:#5a5e60;border-radius:6px;border:2px solid #2f3234;}
+.main::-webkit-scrollbar-thumb:hover{background:#6e7274;}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="tb-group">
+    <span class="tb-title">📁 Dosya</span>
+    <div class="tb-row">
+      <label class="btn" title="M3U dosyası aç (mevcut listeyi değiştirir)">
+        <span class="ic">📂</span>Aç
+        <input type="file" id="fileInput" accept=".m3u,.m3u8,.txt" onchange="importM3U(event,'replace')">
+      </label>
+      <label class="btn" title="Listenin sonuna ekle">
+        <span class="ic">📥</span>Ekle
+        <input type="file" id="fileInputAdd" accept=".m3u,.m3u8,.txt" onchange="importM3U(event,'append')">
+      </label>
+      <button onclick="downloadM3U()" title="M3U olarak kaydet"><span class="ic">💾</span>Kaydet</button>
+    </div>
+  </div>
+
+  <div class="tb-group">
+    <span class="tb-title">✏️ Düzenleme</span>
+    <div class="tb-row">
+      <button onclick="addRow()" title="Yeni satır ekle"><span class="ic">➕</span>Yeni Satır</button>
+      <button onclick="openBulkModal()" title="Toplu URL yapıştır"><span class="ic">📋</span>Toplu Ekle</button>
+      <button id="deleteSelected" class="danger" onclick="deleteSelected()" title="Seçili satırları sil"><span class="ic">🗑️</span>Sil</button>
+      <button onclick="removeDuplicates()" title="Aynı URL'e sahip tekrarları sil"><span class="ic">🧹</span>Tekrarları Sil</button>
+    </div>
+  </div>
+
+  <div class="tb-group">
+    <span class="tb-title">🔍 Link Kontrol</span>
+    <div class="tb-row">
+      <button id="btnCheck" onclick="checkAll()" title="Tüm linkleri kontrol et"><span class="ic">🔗</span>Kontrol Et</button>
+      <button id="btnStop" onclick="stopCheck()" style="display:none;" title="Kontrolü durdur"><span class="ic">⏹️</span>Durdur</button>
+      <button id="btnDelFailed" class="danger" onclick="deleteFailedLinks()" style="display:none;" title="Bozuk linkleri sil"><span class="ic">🚫</span>Ölüleri Sil</button>
+    </div>
+  </div>
+
+  <div class="tb-group">
+    <span class="tb-title">🖼️ Logo</span>
+    <div class="tb-row">
+      <button id="btnAutoLogo" onclick="autoLogoAll()" title="Eksik logoları otomatik bul"><span class="ic">🎨</span>Logoları Bul</button>
+    </div>
+  </div>
+
+  <div class="tb-group grow">
+    <span class="tb-title">⚙️ Görünüm</span>
+    <div class="tb-row">
+      <select id="catFilter" onchange="setCatFilter(this.value)" title="Kategoriye göre filtrele"></select>
+      <input id="search" placeholder="🔍 Ara...  ( / )">
+      <button id="btnKeys" onclick="toggleKeyHelp()" title="Klavye kısayolları"><span class="ic">⌨️</span></button>
+    </div>
+  </div>
+
+  <div class="tb-status">
+    <span id="rowInfo"></span>
+    <span id="selectionInfo"></span>
+    <span id="checkInfo"></span>
+  </div>
+</header>
+
+<div class="container">
+  <div class="main" id="scroller">
+    <table>
+      <thead>
+        <tr>
+          <th class="cb-col">
+            <input type="checkbox" id="selectAll" onchange="toggleSelectAll(this.checked)" title="Görünenleri Seç">
+          </th>
+          <th class="name-col sortable" onclick="sortBy('name')">Ad <span class="arrow"></span></th>
+          <th class="grp-col sortable" onclick="sortBy('group')">Kategori <span class="arrow"></span></th>
+          <th class="logo-col">Logo</th>
+          <th class="sortable" onclick="sortBy('url')">URL <span class="arrow"></span></th>
+          <th class="st-col">Durum</th>
+          <th class="del-col">Sil</th>
+        </tr>
+      </thead>
+      <tbody id="body"></tbody>
+    </table>
+    <div id="emptyMsg"></div>
+  </div>
+</div>
+
+<div id="keyHelp" style="display:none;position:fixed;right:14px;bottom:56px;z-index:1500;
+  background:#3c3f41;border:1px solid #555;border-radius:6px;padding:15px 17px;
+  font-size:13px;color:var(--txt-2);box-shadow:0 20px 60px rgba(0,0,0,.65);max-width:340px;">
+  <b style="color:var(--txt-1);font-size:13px;">⌨️ Klavye Kısayolları</b>
+  <table style="margin-top:8px;border-collapse:collapse;font-size:12px;">
+    <tr><td style="padding:4px 12px 4px 0;"><code style="background:#2b2b2b;padding:2px 6px;border-radius:3px;color:#9ec4ea;font-size:11.5px;border:1px solid #555;">↑ ↓</code></td><td>Satırlar arası geçiş</td></tr>
+    <tr><td style="padding:4px 12px 4px 0;"><code style="background:#2b2b2b;padding:2px 6px;border-radius:3px;color:#9ec4ea;font-size:11.5px;border:1px solid #555;">← →</code></td><td>Sütunlar arası (imleç uçtayken)</td></tr>
+    <tr><td style="padding:4px 12px 4px 0;"><code style="background:#2b2b2b;padding:2px 6px;border-radius:3px;color:#9ec4ea;font-size:11.5px;border:1px solid #555;">Enter</code></td><td>Alt satır (Shift+Enter üst)</td></tr>
+    <tr><td style="padding:4px 12px 4px 0;"><code style="background:#2b2b2b;padding:2px 6px;border-radius:3px;color:#9ec4ea;font-size:11.5px;border:1px solid #555;">PgUp/PgDn</code></td><td>Sayfa sayfa</td></tr>
+    <tr><td style="padding:4px 12px 4px 0;"><code style="background:#2b2b2b;padding:2px 6px;border-radius:3px;color:#9ec4ea;font-size:11.5px;border:1px solid #555;">Ctrl+Home/End</code></td><td>Liste başı / sonu</td></tr>
+    <tr><td style="padding:4px 12px 4px 0;"><code style="background:#2b2b2b;padding:2px 6px;border-radius:3px;color:#9ec4ea;font-size:11.5px;border:1px solid #555;">Ctrl+Space</code></td><td>Satırı seç / bırak</td></tr>
+    <tr><td style="padding:4px 12px 4px 0;"><code style="background:#2b2b2b;padding:2px 6px;border-radius:3px;color:#9ec4ea;font-size:11.5px;border:1px solid #555;">Ctrl+A</code></td><td>Görünenleri seç</td></tr>
+    <tr><td style="padding:4px 12px 4px 0;"><code style="background:#2b2b2b;padding:2px 6px;border-radius:3px;color:#9ec4ea;font-size:11.5px;border:1px solid #555;">Ctrl+Del</code></td><td>Satırı sil</td></tr>
+    <tr><td style="padding:4px 12px 4px 0;"><code style="background:#2b2b2b;padding:2px 6px;border-radius:3px;color:#9ec4ea;font-size:11.5px;border:1px solid #555;">/</code></td><td>Arama kutusuna git</td></tr>
+    <tr><td style="padding:4px 12px 4px 0;"><code style="background:#2b2b2b;padding:2px 6px;border-radius:3px;color:#9ec4ea;font-size:11.5px;border:1px solid #555;">Esc</code></td><td>Odaktan çık</td></tr>
+  </table>
+</div>
+
+<div id="progressBar">
+  <span id="progressText">İşlem yapılıyor...</span>
+  <div class="bar"><div class="bar-fill" id="progressFill" style="width:0%"></div></div>
+  <span id="progressCount"></span>
+</div>
+
+<div class="modal-overlay" id="bulkModal">
+  <div class="modal">
+    <h3>📋 Toplu URL Yapıştır</h3>
+    <p style="margin:0;font-size:13px;color:var(--txt-2);line-height:1.6;">
+      Her satıra bir URL yapıştırın. Kanal adı, kategori ve logo isteğe bağlı:<br>
+      <code style="color:#8fb4ff;">ad | kategori | logo_url | stream_url</code><br>
+      Sadece URL yapıştırırsanız kanal adı otomatik çıkarılır.
+    </p>
+    <textarea id="bulkText" placeholder="http://example.com/stream1&#10;TRT 1 | Ulusal | | http://example.com/trt1"></textarea>
+    <div class="modal-footer">
+      <button onclick="closeBulkModal()">İptal</button>
+      <button class="primary" onclick="applyBulkPaste()">✅ Ekle</button>
+    </div>
+  </div>
+</div>
+
+<script>
+"use strict";
+
+/* ═══════════════════════════════════════════════════════════
+   DURUM
+   Kritik: 'selected' artik DIZI INDEKSI degil, KALICI ID tutar.
+   ═══════════════════════════════════════════════════════════ */
+const ROW_H = 36;      // tbody td yuksekligi ile birebir ayni olmali
+const BUFFER = 8;      // ekran disinda tutulan tampon satir
+const FIELDS = ["name","group","logo","url"];   // Sol/Sag ok sirasi
+
+let data = [];
+let view = [];                 // filtrelenmis satirlar (nesne referansi)
+let byId = new Map();
+let selected = new Set();      // ID kumesi
+let nextId = 1;
+
+let filter = "ALL";
+let searchQ = "";
+let sortKey = null, sortDir = 1;
+
+let stats = { ok:0, fail:0 };  // O(1) sayaclar - her seferinde data.filter YOK
+let checking = false, checkAbort = false;
+let winStart = -1, winEnd = -1;
+
+const $ = id => document.getElementById(id);
+
+function makeRow(o){
+  return { id:nextId++, name:o.name||"", group:o.group||"",
+           logo:o.logo||"", url:o.url||"", status:o.status||"idle" };
+}
+function reindex(){ byId = new Map(data.map(r => [r.id, r])); }
+
+function recountStats(){
+  stats.ok = 0; stats.fail = 0;
+  for (const r of data){ if(r.status==="ok") stats.ok++; else if(r.status==="fail") stats.fail++; }
+}
+function setStatus(row, s){
+  if (row.status === s) return;
+  if (row.status === "ok") stats.ok--;
+  else if (row.status === "fail") stats.fail--;
+  row.status = s;
+  if (s === "ok") stats.ok++;
+  else if (s === "fail") stats.fail++;
+}
+
+/* ── CRUD ── */
+function addRow(){
+  const r = makeRow({});
+  data.unshift(r); byId.set(r.id, r);
+  render(); $("scroller").scrollTop = 0;
+}
+function delRow(id){
+  const r = byId.get(id); if(!r) return;
+  if (r.status==="ok") stats.ok--; else if (r.status==="fail") stats.fail--;
+  selected.delete(id);
+  const i = data.indexOf(r);
+  if (i > -1) data.splice(i,1);
+  byId.delete(id);
+  render();
+}
+
+/* ── SIRALAMA (ID'ler kalici oldugu icin secim bozulmaz) ── */
+function sortBy(key){
+  if (sortKey === key) sortDir *= -1; else { sortKey = key; sortDir = 1; }
+  const coll = new Intl.Collator("tr", { numeric:true, sensitivity:"base" });
+  data.sort((a,b) => coll.compare(a[key]||"", b[key]||"") * sortDir);
+  render();
+}
+
+/* ── FILTRELEME: tek yerde, tek gecis ── */
+function rebuildView(){
+  const q = searchQ;
+  const all = (filter === "ALL");
+  if (!q && all){ view = data.slice(); return; }
+  const out = [];
+  for (let i=0;i<data.length;i++){
+    const r = data[i];
+    if (!all && r.group !== filter) continue;
+    if (q){
+      const hay = (r.name + " " + r.group + " " + r.url).toLowerCase();
+      if (hay.indexOf(q) === -1) continue;
+    }
+    out.push(r);
+  }
+  view = out;
+}
+
+/* view sirasini O(1) sorgulanabilir hale getir */
+function reposition(){
+  posById.clear();
+  for (let i=0;i<view.length;i++) posById.set(view[i].id, i);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   SANAL KAYDIRMA — sadece ekranda gorunen ~30 satir DOM'a girer
+   ═══════════════════════════════════════════════════════════ */
+function captureFocus(){
+  const el = document.activeElement;
+  if (el && el.dataset && el.dataset.field && el.closest && el.closest("#body")){
+    return { id: el.dataset.id, field: el.dataset.field,
+             s: el.selectionStart, e: el.selectionEnd };
+  }
+  return null;
+}
+function restoreFocus(f){
+  if (!f) return;
+  const tr = rowEls.get(Number(f.id));
+  const el = tr ? tr.querySelector('[data-field="'+f.field+'"]')
+                : document.querySelector('#body [data-id="'+f.id+'"][data-field="'+f.field+'"]');
+  if (el){ el.focus(); try { el.setSelectionRange(f.s, f.e); } catch(_){} }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   KLAVYE GEZINTISI
+   Zorluk: sanal kaydirmada gidilecek satir henuz DOM'da OLMAYABILIR.
+   Cozum: once kaydir + pencereyi ciz, SONRA odakla.
+   ═══════════════════════════════════════════════════════════ */
+let viewPos = null;   // view[] icindeki aktif satir sirasi
+let curField = "name";
+let rowEls = new Map();   // id -> <tr>  (genis DOM taramasini onler)
+let activeTr = null;      // vurgulu satirin dogrudan referansi
+let posById = new Map();  // id -> view sirasi (O(1))
+
+function rowIndexById(id){
+  const p = posById.get(id);
+  return p === undefined ? -1 : p;
+}
+
+/* Satiri gorunur alana getirir; gerekiyorsa pencereyi yeniden cizer */
+function scrollRowIntoView(i){
+  const sc = $("scroller");
+  const head = 36;                       // sticky baslik yuksekligi
+  const top = i * ROW_H;
+  const bot = top + ROW_H;
+  const vTop = sc.scrollTop;
+  const vBot = vTop + sc.clientHeight - head;
+  if (top < vTop)      sc.scrollTop = top;
+  else if (bot > vBot) sc.scrollTop = bot - (sc.clientHeight - head);
+  renderWindow(false);                   // yeni satirlar DOM'a girsin
+}
+
+/* Aktif hucreyi odakla. Satir DOM'da degilse once getirir. */
+function focusCell(i, field, selectAll){
+  if (!view.length) return;
+  i = Math.max(0, Math.min(view.length - 1, i));
+  viewPos = i;
+  if (field) curField = field;
+  const row = view[i];
+  scrollRowIntoView(i);
+  const tr = rowEls.get(row.id);
+  const el = tr && tr.querySelector('[data-field="'+curField+'"]');
+  if (el){
+    el.focus();
+    if (selectAll) { try { el.select(); } catch(_){} }
+    highlightRow(row.id);
+  }
+}
+
+function highlightRow(id){
+  const tr = rowEls.get(id);
+  if (activeTr === tr) return;                     // gereksiz DOM islemi yok
+  if (activeTr) activeTr.classList.remove("kb-active");
+  if (tr) tr.classList.add("kb-active");
+  activeTr = tr || null;
+}
+
+function renderWindow(force){
+  const sc = $("scroller");
+  const total = view.length;
+  const perScreen = Math.ceil(sc.clientHeight / ROW_H);
+
+  // DUZELTME: liste kuculdugunde (yeni dosya, filtre, toplu silme) scrollTop
+  // eski buyuk listeden kalirsa tablo BOS gorunuyordu. Gecerli araliga cek.
+  const maxScroll = Math.max(0, total * ROW_H - sc.clientHeight + 40);
+  if (sc.scrollTop > maxScroll){ sc.scrollTop = maxScroll; force = true; }
+
+  // Ekranda GERCEKTEN gorunmesi gereken aralik
+  const reqStart = Math.max(0, Math.floor(sc.scrollTop / ROW_H));
+  const reqEnd   = Math.min(total, reqStart + perScreen + 1);
+
+  // Cizili aralik gerekeni zaten kapsiyorsa hicbir sey yapma.
+  // Tampon sayesinde ok tusuyla BUFFER kadar satir bedavaya gezilir.
+  if (!force && winStart <= reqStart && reqEnd <= winEnd && winEnd - winStart > 0) return;
+
+  let start = Math.max(0, reqStart - BUFFER);
+  let end   = Math.min(total, reqEnd + BUFFER);
+  if (start > end) start = end;
+
+  if (!force && start === winStart && end === winEnd) return;
+  winStart = start; winEnd = end;
+
+  const f = captureFocus();
+  const topH = start * ROW_H;
+  const botH = Math.max(0, (total - end) * ROW_H);
+  const parts = [];
+
+  if (topH > 0) parts.push('<tr class="spacer"><td colspan="7" style="height:'+topH+'px"></td></tr>');
+  for (let i=start;i<end;i++) parts.push(rowHtml(view[i]));
+  if (botH > 0) parts.push('<tr class="spacer"><td colspan="7" style="height:'+botH+'px"></td></tr>');
+
+  $("body").innerHTML = parts.join("");
+
+  // Satir referanslarini onbellege al: sonraki tus vurusları querySelector yapmaz
+  rowEls.clear(); activeTr = null;
+  const trs = $("body").children;
+  for (let i=0;i<trs.length;i++){
+    const id = trs[i].getAttribute("data-row");
+    if (id) rowEls.set(Number(id), trs[i]);
+  }
+
+  restoreFocus(f);
+  // satirlar geri donusturuldugu icin vurguyu yeniden uygula
+  if (viewPos !== null && view[viewPos]) highlightRow(view[viewPos].id);
+}
+
+function rowHtml(r){
+  const id = r.id;
+  const chk = selected.has(id) ? " checked" : "";
+  const thumb = r.logo
+    ? '<img class="logo-thumb" data-thumb="'+id+'" src="'+escAttr(r.logo)+'" onerror="this.style.visibility=\'hidden\'" onload="this.style.visibility=\'visible\'">'
+    : '<img class="logo-thumb" data-thumb="'+id+'" style="visibility:hidden">';
+  return '<tr data-row="'+id+'">'
+    + '<td class="cb-col"><input type="checkbox" data-act="sel" data-id="'+id+'"'+chk+'></td>'
+    + '<td><input type="text" data-field="name"  data-id="'+id+'" value="'+escAttr(r.name)+'" placeholder="Kanal adı"></td>'
+    + '<td><input type="text" data-field="group" data-id="'+id+'" value="'+escAttr(r.group)+'" placeholder="Kategori"></td>'
+    + '<td class="logo-col"><div class="logo-wrap">'+thumb
+      + '<input type="text" data-field="logo" data-id="'+id+'" value="'+escAttr(r.logo)+'" placeholder="logo url">'
+      + '<button class="btn-logo" data-act="autologo" data-id="'+id+'" title="Otomatik logo bul">🔍</button>'
+      + '</div></td>'
+    + '<td><input type="text" data-field="url" data-id="'+id+'" value="'+escAttr(r.url)+'" placeholder="http://..."></td>'
+    + '<td class="st-col status-cell">'+statusBadge(r)+'</td>'
+    + '<td class="del-col"><button class="delete" data-act="del" data-id="'+id+'">X</button></td>'
+    + '</tr>';
+}
+
+function statusBadge(r){
+  const map = { ok:["st-ok","✅ Aktif"], fail:["st-fail","❌ Bozuk"],
+                wait:["st-wait","⏳ Bekle"], idle:["st-idle","—"] };
+  const m = map[r.status] || map.idle;
+  return '<span class="status '+m[0]+'" data-act="recheck" data-id="'+r.id+'" title="Tekrar kontrol et">'+m[1]+'</span>';
+}
+
+/* Tek satirin sadece durum hucresini gunceller (tum tabloyu DEGIL) */
+function renderRow(id){
+  const tr = document.querySelector('#body tr[data-row="'+id+'"]');
+  if (!tr) return;                       // ekranda degilse is yok - bedava
+  const cell = tr.querySelector(".status-cell");
+  const r = byId.get(id);
+  if (cell && r) cell.innerHTML = statusBadge(r);
+}
+
+function render(){
+  document.querySelectorAll("th.sortable").forEach(th => {
+    th.classList.remove("asc","desc");
+    if (th.getAttribute("onclick") === "sortBy('"+sortKey+"')")
+      th.classList.add(sortDir === 1 ? "asc" : "desc");
+  });
+  rebuildView();
+  reposition();
+  // Aktif satir filtre disinda kaldiysa imleci gecerli bir yere cek
+  if (viewPos !== null){
+    if (!view.length) viewPos = null;
+    else if (viewPos >= view.length) viewPos = view.length - 1;
+  }
+  renderCats();
+  renderWindow(true);
+  updateSelectionUI();
+  updateCheckSummary();
+  $("rowInfo").textContent = view.length === data.length
+    ? data.length + " kanal"
+    : view.length + " / " + data.length + " kanal";
+  $("emptyMsg").style.display = view.length ? "none" : "block";
+  $("emptyMsg").textContent = data.length
+    ? "Bu filtreye uyan kanal yok"
+    : "Henüz kanal yok — 📂 Dosya Aç ile bir M3U yükleyin";
+}
+
+/* ── OLAY DELEGASYONU: satir basina dinleyici yok ── */
+$("body").addEventListener("input", e => {
+  const t = e.target, fld = t.dataset.field;
+  if (!fld) return;
+  const r = byId.get(Number(t.dataset.id));
+  if (!r) return;
+  r[fld] = t.value;
+  if (fld === "url") { setStatus(r,"idle"); renderRow(r.id); updateCheckSummary(); }
+  if (fld === "logo"){
+    // Hucreyi YENIDEN KURMUYORUZ -> imlec/odak kaybolmaz
+    const img = t.parentNode.querySelector('[data-thumb="'+r.id+'"]');
+    if (img){ if (r.logo){ img.src = r.logo; } else { img.removeAttribute("src"); img.style.visibility="hidden"; } }
+  }
+  if (fld === "group") scheduleCats();
+});
+
+$("body").addEventListener("change", e => {
+  if (e.target.dataset.act === "sel"){
+    const id = Number(e.target.dataset.id);
+    e.target.checked ? selected.add(id) : selected.delete(id);
+    updateSelectionUI();
+  }
+});
+
+$("body").addEventListener("click", e => {
+  const el = e.target.closest("[data-act]");
+  if (!el) return;
+  const act = el.dataset.act, id = Number(el.dataset.id);
+  if (act === "del") delRow(id);
+  else if (act === "autologo") autoLogoOne(id);
+  else if (act === "recheck") recheckOne(id);
+});
+
+/* ── KLAVYE: tablo icinde gezinme ── */
+$("body").addEventListener("focusin", e => {
+  const t = e.target;
+  if (!t.dataset || !t.dataset.field) return;
+  const i = rowIndexById(Number(t.dataset.id));
+  if (i > -1){ viewPos = i; curField = t.dataset.field; highlightRow(view[i].id); }
+});
+
+$("body").addEventListener("keydown", e => {
+  const t = e.target;
+  const isText = t.dataset && t.dataset.field;
+  const isCb = t.dataset && t.dataset.act === "sel";
+  if (!isText && !isCb) return;
+  if (viewPos === null) return;
+
+  const sc = $("scroller");
+  const page = Math.max(1, Math.floor(sc.clientHeight / ROW_H) - 1);
+  const k = e.key;
+  let handled = true;
+
+  if (k === "ArrowDown")      focusCell(viewPos + 1, null, true);
+  else if (k === "ArrowUp")   focusCell(viewPos - 1, null, true);
+  else if (k === "PageDown")  focusCell(viewPos + page, null, true);
+  else if (k === "PageUp")    focusCell(viewPos - page, null, true);
+  else if (k === "Enter"){
+    // Shift+Enter yukari, Enter asagi
+    focusCell(viewPos + (e.shiftKey ? -1 : 1), null, true);
+  }
+  else if ((k === "Home") && (e.ctrlKey || e.metaKey)) focusCell(0, null, true);
+  else if ((k === "End")  && (e.ctrlKey || e.metaKey)) focusCell(view.length - 1, null, true);
+  else if (k === "ArrowLeft" || k === "ArrowRight"){
+    // Metin icinde imlec hareketine karismayalim:
+    // sadece imlec ucta ve secim yokken hucre degistir
+    if (isText && t.selectionStart !== t.selectionEnd) { handled = false; }
+    else {
+      const atStart = !isText || t.selectionStart === 0;
+      const atEnd   = !isText || t.selectionStart === t.value.length;
+      const fi = FIELDS.indexOf(curField);
+      if (k === "ArrowRight" && atEnd && fi < FIELDS.length - 1)
+        focusCell(viewPos, FIELDS[fi+1], true);
+      else if (k === "ArrowLeft" && atStart && fi > 0)
+        focusCell(viewPos, FIELDS[fi-1], true);
+      else handled = false;
+    }
+  }
+  else if (k === " " && isCb){ handled = false; }          // checkbox'a dokunma
+  else if (k === "Delete" && (e.ctrlKey || e.metaKey)){
+    const row = view[viewPos];
+    if (row){ const at = viewPos; delRow(row.id); focusCell(Math.min(at, view.length-1), null, true); }
+  }
+  else if (k === "Escape"){ t.blur(); handled = true; }
+  else handled = false;
+
+  if (handled){ e.preventDefault(); e.stopPropagation(); }
+});
+
+/* Ctrl+A liste secimi, "/" arama kutusuna atlar (global) */
+document.addEventListener("keydown", e => {
+  if ($("bulkModal").classList.contains("open")) return;
+  const inField = document.activeElement && document.activeElement.tagName === "INPUT";
+  if (e.key === "/" && !inField){ e.preventDefault(); $("search").focus(); $("search").select(); }
+  else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "a" && document.activeElement
+           && document.activeElement.closest && document.activeElement.closest("#body")){
+    e.preventDefault(); toggleSelectAll(true);
+  }
+  else if (e.key === " " && document.activeElement
+           && document.activeElement.closest && document.activeElement.closest("#body")
+           && e.ctrlKey){
+    // Ctrl+Space: aktif satiri sec/birak
+    e.preventDefault();
+    if (viewPos !== null && view[viewPos]){
+      const id = view[viewPos].id;
+      selected.has(id) ? selected.delete(id) : selected.add(id);
+      const cb = document.querySelector('#body input[data-act="sel"][data-id="'+id+'"]');
+      if (cb) cb.checked = selected.has(id);
+      updateSelectionUI();
+    }
+  }
+});
+
+/* Arama kutusundan Ok-Asagi ile listeye gec */
+$("search").addEventListener("keydown", e => {
+  if (e.key === "ArrowDown" || e.key === "Enter"){
+    e.preventDefault();
+    if (view.length){ $("scroller").scrollTop = 0; focusCell(0, "name", true); }
+  }
+});
+
+let scrollTick = false;
+$("scroller").addEventListener("scroll", () => {
+  if (scrollTick) return;
+  scrollTick = true;
+  requestAnimationFrame(() => { scrollTick = false; renderWindow(false); });
+}, { passive:true });
+
+window.addEventListener("resize", () => renderWindow(true));
+
+/* ── ARAMA: debounce (her tus vurusunda render YOK) ── */
+let searchTimer = null;
+$("search").addEventListener("input", e => {
+  clearTimeout(searchTimer);
+  const v = e.target.value.toLowerCase().trim();
+  searchTimer = setTimeout(() => {
+    if (v === searchQ) return;
+    searchQ = v;
+    $("scroller").scrollTop = 0;
+    render();
+  }, 180);
+});
+
+/* ── SECIM ── */
+function toggleSelectAll(checked){
+  if (checked) for (const r of view) selected.add(r.id);
+  else         for (const r of view) selected.delete(r.id);
+  renderWindow(true);
+  updateSelectionUI();
+}
+function updateSelectionUI(){
+  const cnt = selected.size;
+  $("selectionInfo").textContent = cnt ? cnt + " seçili" : "";
+  $("deleteSelected").style.display = cnt ? "inline-block" : "none";
+  let sel = 0;
+  for (const r of view) if (selected.has(r.id)) sel++;
+  const cb = $("selectAll");
+  cb.checked = view.length > 0 && sel === view.length;
+  cb.indeterminate = sel > 0 && sel < view.length;
+}
+function deleteSelected(){
+  if (!selected.size) return;
+  if (!confirm(selected.size + " kanal silinecek. Emin misiniz?")) return;
+  data = data.filter(r => !selected.has(r.id));   // tek gecis, splice dongusu yok
+  selected.clear(); reindex(); recountStats(); render();
+}
+function deleteFailedLinks(){
+  const n = stats.fail;
+  if (!n){ showToast("Bozuk link bulunamadı."); return; }
+  if (!confirm(n + " bozuk kanal silinecek. Emin misiniz?")) return;
+  data = data.filter(r => { if (r.status === "fail"){ selected.delete(r.id); return false; } return true; });
+  reindex(); recountStats(); render();
+}
+
+/* ── KATEGORILER (artik acilir liste) ── */
+let catsTimer = null;
+function scheduleCats(){ clearTimeout(catsTimer); catsTimer = setTimeout(renderCats, 400); }
+
+function setCatFilter(v){
+  filter = v || "ALL";
+  $("scroller").scrollTop = 0;
+  render();
+}
+
+function renderCats(){
+  const counts = new Map();
+  for (const r of data) if (r.group) counts.set(r.group, (counts.get(r.group)||0)+1);
+  const keys = [...counts.keys()].sort((a,b)=>a.localeCompare(b,"tr"));
+
+  const sel = $("catFilter");
+  // Filtre listede yoksa (or. kategori silindi) ALL'a don
+  if (filter !== "ALL" && !counts.has(filter)) filter = "ALL";
+
+  const parts = ['<option value="ALL">Tüm kategoriler (' + data.length + ')</option>'];
+  for (const k of keys)
+    parts.push('<option value="' + escAttr(k) + '">' + escAttr(k) + ' (' + counts.get(k) + ')</option>');
+  const html = parts.join("");
+  if (sel.innerHTML !== html) sel.innerHTML = html;   // gereksiz DOM islemi yok
+  sel.value = filter;
+}
+
+/* ── LINK KONTROLU ── */
+const TIMEOUT_MS = 8000;
+let CONCURRENCY = 8;
+
+function checkAll(){
+  if (checking) return;
+  if (data.length > 2000 &&
+      !confirm(data.length + " link kontrol edilecek. Bu uzun sürebilir. Devam?")) return;
+  for (const r of data) setStatus(r,"wait");
+  render();
+  startChecking(data.slice());
+}
+function stopCheck(){ checkAbort = true; }
+
+function startChecking(rows){
+  checking = true; checkAbort = false;
+  const queue = rows; let qi = 0;
+  const total = queue.length; let done = 0;
+
+  $("btnCheck").disabled = true;
+  $("btnStop").style.display = "inline-block";
+  $("btnDelFailed").style.display = "none";
+  showProgressBar("Linkler kontrol ediliyor...", total);
+
+  // Ilerleme yaziyi saniyede ~10 kez gunceller; her tamamlanan istekte DEGIL
+  let dirty = false;
+  const ticker = setInterval(() => {
+    if (!dirty) return;
+    dirty = false;
+    updateProgressBar(done, total);
+    $("checkInfo").textContent = "✅ " + stats.ok + "  ❌ " + stats.fail;
+  }, 100);
+
+  async function worker(){
+    while (!checkAbort){
+      const i = qi++;
+      if (i >= total) break;
+      const r = queue[i];
+      if (!r.url){ setStatus(r,"fail"); done++; dirty = true; renderRow(r.id); continue; }
+      setStatus(r,"wait"); renderRow(r.id);
+      const ok = await probeUrl(r.url);
+      setStatus(r, ok ? "ok" : "fail");
+      done++; dirty = true; renderRow(r.id);
+    }
+  }
+  Promise.all(Array.from({length:CONCURRENCY}, worker)).then(() => {
+    clearInterval(ticker);
+    if (checkAbort) for (const r of data) if (r.status === "wait") setStatus(r,"idle");
+    checking = false;
+    $("btnCheck").disabled = false;
+    $("btnStop").style.display = "none";
+    hideProgressBar();
+    render();
+  });
+}
+
+function probeUrl(url){
+  return new Promise(resolve => {
+    let settled = false;
+    const done = v => { if (!settled){ settled = true; clearTimeout(timer); resolve(v); } };
+    const ac = new AbortController();
+    const timer = setTimeout(() => { try{ac.abort();}catch(_){} done(false); }, TIMEOUT_MS);
+
+    fetch(url, { method:"GET", headers:{}, signal:ac.signal, mode:"no-cors", cache:"no-store" })
+      .then(() => done(true))
+      .catch(err => {
+        if (err && err.name === "AbortError") { done(false); return; }
+        // DUZELTME: eskiden burada resolve(true) vardi -> AG HATASI ALAN
+        // linkler "Aktif" gorunuyordu. Artik medya ise video ile dene, degilse BOZUK.
+        if (/\.(m3u8|ts|mpd|mp4)/i.test(url))
+          videoProbe(url).then(done);
+        else done(false);
+      });
+  });
+}
+function videoProbe(url){
+  return new Promise(resolve => {
+    const v = document.createElement("video");
+    v.muted = true; v.preload = "metadata";
+    let settled = false;
+    const fin = val => {
+      if (settled) return; settled = true;
+      clearTimeout(t);
+      v.removeAttribute("src"); try{ v.load(); }catch(_){}
+      resolve(val);
+    };
+    const t = setTimeout(() => fin(false), TIMEOUT_MS);
+    v.onloadedmetadata = () => fin(true);
+    v.onerror = () => fin(false);
+    v.src = url;
+  });
+}
+function recheckOne(id){
+  if (checking) return;
+  const r = byId.get(id); if (!r) return;
+  setStatus(r,"wait"); renderRow(id);
+  probeUrl(r.url).then(ok => { setStatus(r, ok?"ok":"fail"); renderRow(id); updateCheckSummary(); });
+}
+function updateCheckSummary(){
+  $("checkInfo").textContent = (stats.ok || stats.fail) ? "✅ "+stats.ok+"  ❌ "+stats.fail : "";
+  $("btnDelFailed").style.display = stats.fail ? "inline-block" : "none";
+}
+
+/* ── LOGO ── */
+const LOGO_MAP = {
+  "trt 1":"https://upload.wikimedia.org/wikipedia/commons/thumb/0/04/TRT_1_logo_%282021%29.svg/200px-TRT_1_logo_%282021%29.svg.png",
+  "trt1":"https://upload.wikimedia.org/wikipedia/commons/thumb/0/04/TRT_1_logo_%282021%29.svg/200px-TRT_1_logo_%282021%29.svg.png",
+  "trt2":"https://upload.wikimedia.org/wikipedia/commons/thumb/5/5d/TRT_2_logo.svg/200px-TRT_2_logo.svg.png",
+  "trt haber":"https://upload.wikimedia.org/wikipedia/commons/thumb/9/9b/TRT_Haber_logo.svg/200px-TRT_Haber_logo.svg.png",
+  "trt spor":"https://upload.wikimedia.org/wikipedia/commons/thumb/4/4c/TRT_Spor_logo.svg/200px-TRT_Spor_logo.svg.png",
+  "trt world":"https://upload.wikimedia.org/wikipedia/commons/thumb/e/e0/TRT_World_logo.svg/200px-TRT_World_logo.svg.png",
+  "show tv":"https://upload.wikimedia.org/wikipedia/commons/thumb/3/3d/Show_TV_logo.svg/200px-Show_TV_logo.svg.png",
+  "showtv":"https://upload.wikimedia.org/wikipedia/commons/thumb/3/3d/Show_TV_logo.svg/200px-Show_TV_logo.svg.png",
+  "atv":"https://upload.wikimedia.org/wikipedia/commons/thumb/4/47/ATV_logo_%28Turkey%29.svg/200px-ATV_logo_%28Turkey%29.svg.png",
+  "kanal d":"https://upload.wikimedia.org/wikipedia/commons/thumb/2/21/Kanal_D_logo.svg/200px-Kanal_D_logo.svg.png",
+  "kanald":"https://upload.wikimedia.org/wikipedia/commons/thumb/2/21/Kanal_D_logo.svg/200px-Kanal_D_logo.svg.png",
+  "star tv":"https://upload.wikimedia.org/wikipedia/commons/thumb/a/a8/Star_TV_%28Turkey%29_logo.svg/200px-Star_TV_%28Turkey%29_logo.svg.png",
+  "startv":"https://upload.wikimedia.org/wikipedia/commons/thumb/a/a8/Star_TV_%28Turkey%29_logo.svg/200px-Star_TV_%28Turkey%29_logo.svg.png",
+  "fox tv":"https://upload.wikimedia.org/wikipedia/commons/thumb/6/67/FOX_TV_Türkiye_logosu.svg/200px-FOX_TV_Türkiye_logosu.svg.png",
+  "foxtv":"https://upload.wikimedia.org/wikipedia/commons/thumb/6/67/FOX_TV_Türkiye_logosu.svg/200px-FOX_TV_Türkiye_logosu.svg.png",
+  "cnn türk":"https://upload.wikimedia.org/wikipedia/commons/thumb/e/e4/CNN_Türk_logo.svg/200px-CNN_Türk_logo.svg.png",
+  "cnn turk":"https://upload.wikimedia.org/wikipedia/commons/thumb/e/e4/CNN_Türk_logo.svg/200px-CNN_Türk_logo.svg.png",
+  "ntv":"https://upload.wikimedia.org/wikipedia/commons/thumb/8/85/NTV_%28Turkey%29_logo.svg/200px-NTV_%28Turkey%29_logo.svg.png",
+  "haber türk":"https://upload.wikimedia.org/wikipedia/commons/thumb/f/f3/Haberturk_logo.svg/200px-Haberturk_logo.svg.png",
+  "haberturk":"https://upload.wikimedia.org/wikipedia/commons/thumb/f/f3/Haberturk_logo.svg/200px-Haberturk_logo.svg.png",
+  "bbc world":"https://upload.wikimedia.org/wikipedia/commons/thumb/4/4f/BBC_World_News_2022_%281%29.svg/200px-BBC_World_News_2022_%281%29.svg.png",
+  "euronews":"https://upload.wikimedia.org/wikipedia/commons/thumb/5/5d/Euronews_2022.svg/200px-Euronews_2022.svg.png",
+  "al jazeera":"https://upload.wikimedia.org/wikipedia/commons/thumb/f/f3/Al_Jazeera_MediaNetwork_Logo.svg/200px-Al_Jazeera_MediaNetwork_Logo.svg.png",
+  "cnn":"https://upload.wikimedia.org/wikipedia/commons/thumb/b/b1/CNN.svg/200px-CNN.svg.png",
+  "bbc":"https://upload.wikimedia.org/wikipedia/commons/thumb/4/41/BBC_Logo_2021.svg/200px-BBC_Logo_2021.svg.png",
+  "bloomberg ht":"https://upload.wikimedia.org/wikipedia/commons/thumb/d/d8/Bloomberg_HT_logo.svg/200px-Bloomberg_HT_logo.svg.png"
+};
+// Uzun anahtar once => "cnn türk", "cnn"den once eslesir
+const LOGO_KEYS = Object.keys(LOGO_MAP).sort((a,b) => b.length - a.length);
+
+function findLogo(name){
+  if (!name) return "";
+  const key = name.toLowerCase().trim();
+  if (LOGO_MAP[key]) return LOGO_MAP[key];
+  for (const k of LOGO_KEYS){
+    // 3 harften kisa anahtarlarda kismi eslesme yapma (yanlis logo onlenir)
+    if (k.length >= 3 && key.includes(k)) return LOGO_MAP[k];
+  }
+  return "";
+}
+function autoLogoOne(id){
+  const r = byId.get(id); if (!r) return;
+  const logo = findLogo(r.name);
+  if (logo){
+    r.logo = logo;
+    const tr = document.querySelector('#body tr[data-row="'+id+'"]');
+    if (tr){
+      const inp = tr.querySelector('[data-field="logo"]');
+      const img = tr.querySelector('[data-thumb="'+id+'"]');
+      if (inp) inp.value = logo;
+      if (img){ img.src = logo; img.style.visibility = "visible"; }
+    }
+    showToast("Logo bulundu: " + r.name);
+  } else showToast("Logo bulunamadı: " + r.name);
+}
+async function autoLogoAll(){
+  const targets = data.filter(r => !r.logo);
+  if (!targets.length){ showToast("Tüm kanalların zaten logosu var."); return; }
+  $("btnAutoLogo").disabled = true;
+  showProgressBar("Logolar aranıyor...", targets.length);
+  let done = 0, found = 0;
+  for (const r of targets){
+    const logo = findLogo(r.name);
+    if (logo){ r.logo = logo; found++; }
+    if (++done % 500 === 0){                  // arayuze nefes aldir
+      updateProgressBar(done, targets.length);
+      await new Promise(res => setTimeout(res, 0));
+    }
+  }
+  hideProgressBar();
+  $("btnAutoLogo").disabled = false;
+  render();
+  showToast(found + "/" + targets.length + " kanal için logo bulundu");
+}
+
+/* ── TOPLU YAPISTIR ── */
+function openBulkModal(){
+  $("bulkText").value = "";
+  $("bulkModal").classList.add("open");
+  setTimeout(() => $("bulkText").focus(), 100);
+}
+function closeBulkModal(){ $("bulkModal").classList.remove("open"); }
+
+function applyBulkPaste(){
+  const raw = $("bulkText").value.trim();
+  if (!raw){ closeBulkModal(); return; }
+  const lines = raw.split("\n");
+  const batch = [];
+  for (let line of lines){
+    line = line.trim(); if (!line) continue;
+    let name="", group="", logo="", url="";
+    if (line.includes("|")){
+      const p = line.split("|").map(s => s.trim());
+      name = p[0]||""; group = p[1]||""; logo = p[2]||""; url = p[3]||"";
+    } else if (/^[a-z][a-z0-9+.-]*:\/\//i.test(line)){
+      url = line;
+      try {
+        const u = new URL(url);
+        const seg = u.pathname.split("/").filter(Boolean);
+        const last = seg[seg.length-1] || "";
+        name = last.replace(/\.(m3u8|ts|mp4|mkv|avi)$/i,"").replace(/[_-]/g," ").trim() || u.hostname;
+      } catch(e){ name = url; }
+    } else continue;
+    if (!url) continue;
+    batch.push(makeRow({name,group,logo,url}));
+  }
+  closeBulkModal();
+  if (batch.length){
+    data.unshift(...batch);
+    reindex(); render();
+    $("scroller").scrollTop = 0;
+    showToast(batch.length + " kanal eklendi");
+  }
+}
+
+/* ── ICE / DISA AKTAR ── */
+// EXTINF adi: TIRNAK DISINDAKI ilk virgulden sonrasi (virgullu adlar korunur)
+function extinfName(line){
+  let inQ = false;
+  for (let i=0;i<line.length;i++){
+    const c = line[i];
+    if (c === '"') inQ = !inQ;
+    else if (c === "," && !inQ) return line.slice(i+1).trim();
+  }
+  return "";
+}
+
+function parseM3U(text){
+  const lines = text.replace(/\r/g,"").split("\n");
+  const out = [];
+  let cur = null, pendingGroup = "";
+  for (let l of lines){
+    l = l.trim(); if (!l) continue;
+    if (l.startsWith("#EXTINF")){
+      const name  = extinfName(l);
+      const group = (l.match(/group-title="(.*?)"/i)||[])[1] || "";
+      const logo  = (l.match(/tvg-logo="(.*?)"/i)||[])[1] || "";
+      cur = { name, group, logo, url:"" };
+    } else if (l.startsWith("#EXTGRP:")){
+      pendingGroup = l.slice(8).trim();
+      if (cur && !cur.group) cur.group = pendingGroup;
+    } else if (l.startsWith("#")){
+      continue;                                  // EXTVLCOPT vb. yoksay
+    } else {
+      // DUZELTME: sadece http degil; rtmp/rtsp/udp/rtp/file de kabul
+      if (cur){ cur.url = l; out.push(makeRow(cur)); cur = null; pendingGroup = ""; }
+      else out.push(makeRow({ name:l.split("/").pop() || l, url:l }));
+    }
+  }
+  return out;
+}
+
+function importM3U(e, mode){
+  const file = e.target.files && e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    const rows = parseM3U(String(reader.result));
+    if (!rows.length){ showToast("Dosyada geçerli kanal bulunamadı"); return; }
+    if (mode === "append"){
+      data = data.concat(rows);
+    } else {
+      // "Aç" = degistir. Veri kaybini onlemek icin dolu listede onay iste.
+      if (data.length && !confirm("Mevcut " + data.length +
+          " kanal silinip yerine " + rows.length + " kanal yüklenecek.\n\nDevam edilsin mi?\n\n(Eklemek için ➕ Ekle düğmesini kullanın)")) return;
+      data = rows; selected.clear();
+    }
+    reindex(); recountStats();
+    filter = "ALL"; searchQ = ""; $("search").value = "";
+    $("scroller").scrollTop = 0;
+    render();
+    showToast(rows.length + " kanal yüklendi (toplam " + data.length + ")");
+  };
+  reader.onerror = () => showToast("Dosya okunamadı");
+  reader.readAsText(file);
+  e.target.value = "";
+}
+
+/* Ayni URL'e sahip tekrarlari sil (ilk kayit korunur) */
+function removeDuplicates(){
+  const seen = new Set();
+  const dup = [];
+  for (const r of data){
+    const k = (r.url||"").trim().toLowerCase();
+    if (!k) continue;
+    if (seen.has(k)) dup.push(r); else seen.add(k);
+  }
+  if (!dup.length){ showToast("Tekrarlayan kanal bulunamadı."); return; }
+  if (!confirm(dup.length + " tekrarlayan kanal silinecek. Emin misiniz?")) return;
+  const kill = new Set(dup.map(r => r.id));
+  data = data.filter(r => !kill.has(r.id));
+  for (const id of kill) selected.delete(id);
+  reindex(); recountStats(); render();
+  showToast(dup.length + " tekrar silindi");
+}
+
+function downloadM3U(){
+  const buf = ["#EXTM3U\n"];
+  for (const r of data){
+    if (!r.name || !r.url) continue;
+    buf.push('#EXTINF:-1 tvg-logo="' + String(r.logo||"").replace(/"/g,"%22") +
+             '" group-title="' + String(r.group||"").replace(/"/g,"%22") +
+             '",' + r.name + "\n" + r.url + "\n");
+  }
+  const blob = new Blob(buf, { type:"audio/x-mpegurl" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = "playlist.m3u";
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);   // bellek sizintisi onlenir
+}
+
+/* ── ILERLEME / TOAST / YARDIMCI ── */
+function showProgressBar(text, total){
+  $("progressText").textContent = text;
+  $("progressFill").style.width = "0%";
+  $("progressCount").textContent = "0/" + total;
+  $("progressBar").style.display = "flex";
+}
+function updateProgressBar(done, total){
+  $("progressFill").style.width = (total ? Math.round(done/total*100) : 100) + "%";
+  $("progressCount").textContent = done + "/" + total;
+}
+function hideProgressBar(){ $("progressBar").style.display = "none"; }
+
+let toastTimer = null;
+function showToast(msg){
+  let t = $("toast");
+  if (!t){
+    t = document.createElement("div");
+    t.id = "toast";
+    t.style.cssText = "position:fixed;bottom:48px;left:50%;transform:translateX(-50%);background:#4a4d4f;color:#ddd;border:1px solid #666;padding:8px 18px;border-radius:5px;font-size:13px;box-shadow:0 8px 30px rgba(0,0,0,.5);z-index:2000;pointer-events:none;transition:opacity .3s;";
+    document.body.appendChild(t);
+  }
+  t.textContent = msg; t.style.opacity = "1";
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.style.opacity = "0", 2500);
+}
+
+function escAttr(s){
+  return String(s==null?"":s)
+    .replace(/&/g,"&amp;").replace(/"/g,"&quot;")
+    .replace(/</g,"&lt;").replace(/>/g,"&gt;");
+}
+
+$("bulkModal").addEventListener("click", function(e){ if (e.target === this) closeBulkModal(); });
+document.addEventListener("keydown", e => { if (e.key === "Escape") closeBulkModal(); });
+
+function toggleKeyHelp(){
+  const h = $("keyHelp");
+  h.style.display = h.style.display === "none" ? "block" : "none";
+}
+document.addEventListener("click", e => {
+  const h = $("keyHelp");
+  if (h.style.display === "block" && !h.contains(e.target) && e.target.id !== "btnKeys")
+    h.style.display = "none";
+});
+
+/* test kancasi */
+window.__api = {
+  set: rows => { data = rows.map(makeRow); reindex(); recountStats(); render(); },
+  get: () => data, view: () => view, selected: () => selected,
+  parseM3U, extinfName, findLogo, render, stats: () => stats,
+  focusCell, pos: () => viewPos, field: () => curField,
+  setPos: (i,f) => { viewPos = i; curField = f || curField; }
+};
+
+render();
+</script>
+</body>
+</html>
