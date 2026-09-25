@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>XStream Link Kontrolcü</title>
+  <style>
+    :root {
+      --bg: #0f1419;
+      --card: #1a2332;
+      --border: #2d3a4f;
+      --text: #e7ecf3;
+      --muted: #8b9cb3;
+      --accent: #3b82f6;
+      --green: #22c55e;
+      --red: #ef4444;
+      --yellow: #eab308;
+      --orange: #f97316;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 20px;
+      line-height: 1.5;
+    }
+    .container { max-width: 960px; margin: 0 auto; }
+    h1 {
+      font-size: 1.6rem;
+      font-weight: 700;
+      margin-bottom: 6px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .subtitle { color: var(--muted); font-size: 0.9rem; margin-bottom: 24px; }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+    label { display: block; font-size: 0.85rem; color: var(--muted); margin-bottom: 6px; }
+    textarea, input[type="text"] {
+      width: 100%;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      padding: 12px 14px;
+      font-size: 0.95rem;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      resize: vertical;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    textarea:focus, input:focus { border-color: var(--accent); }
+    .btn-row { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px; }
+    button {
+      border: none;
+      border-radius: 8px;
+      padding: 10px 18px;
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.15s, transform 0.1s;
+    }
+    button:active { transform: scale(0.98); }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-primary:hover:not(:disabled) { opacity: 0.9; }
+    .btn-success { background: var(--green); color: #fff; }
+    .btn-danger { background: var(--red); color: #fff; }
+    .btn-secondary { background: var(--border); color: var(--text); }
+    .btn-sm { padding: 6px 12px; font-size: 0.8rem; }
+    .stats {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-bottom: 16px;
+      font-size: 0.85rem;
+    }
+    .stat {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px 14px;
+    }
+    .stat strong { color: var(--accent); }
+    .link-list { display: flex; flex-direction: column; gap: 12px; }
+    .link-item {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 14px 16px;
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 10px;
+      align-items: start;
+    }
+    .link-url {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 0.8rem;
+      word-break: break-all;
+      color: var(--text);
+      margin-bottom: 6px;
+    }
+    .link-meta { font-size: 0.8rem; color: var(--muted); }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+    .badge-wait { background: #334155; color: #cbd5e1; }
+    .badge-check { background: #422006; color: #fbbf24; }
+    .badge-ok { background: #14532d; color: #4ade80; }
+    .badge-fail { background: #450a0a; color: #f87171; }
+    .badge-exp { background: #431407; color: #fb923c; }
+    .badge-ban { background: #3b0764; color: #c084fc; }
+    .actions { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+    .empty {
+      text-align: center;
+      padding: 40px 20px;
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+    .info-box {
+      background: #1e293b;
+      border-left: 3px solid var(--accent);
+      padding: 12px 14px;
+      border-radius: 0 8px 8px 0;
+      font-size: 0.85rem;
+      color: var(--muted);
+      margin-bottom: 20px;
+    }
+    .info-box strong { color: var(--text); }
+    footer {
+      text-align: center;
+      color: var(--muted);
+      font-size: 0.8rem;
+      margin-top: 30px;
+      padding-bottom: 20px;
+    }
+    @media (max-width: 600px) {
+      .link-item { grid-template-columns: 1fr; }
+      .actions { justify-content: flex-start; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>📡 XStream Link Kontrolcü</h1>
+    <p class="subtitle">Xtream Codes / XStream M3U ve API linklerinin çalışıp çalışmadığını kontrol eder.</p>
+
+    <div class="info-box">
+      <strong>Nasıl kullanılır?</strong><br>
+      • Tam M3U linki ekleyebilirsin: <code>http://sunucu:port/get.php?username=...&amp;password=...&amp;type=m3u_plus</code><br>
+      • Veya sadece player_api linki: <code>.../player_api.php?username=...&amp;password=...</code><br>
+      • Linkler tarayıcında saklanır. Kontrol için sunucunun CORS politikası engel olabilir; o durumda “Erişim engellendi” görürsün.
+    </div>
+
+    <div class="card">
+      <label for="linksInput">Link(ler) ekle (her satıra bir link)</label>
+      <textarea id="linksInput" rows="4" placeholder="http://ornek.com:8080/get.php?username=user&password=pass&type=m3u_plus&#10;http://baska.com:80/player_api.php?username=xxx&password=yyy"></textarea>
+      <div class="btn-row">
+        <button class="btn-primary" onclick="addLinks()">➕ Ekle</button>
+        <button class="btn-success" id="checkAllBtn" onclick="checkAll()" disabled>🔍 Tümünü Kontrol Et</button>
+        <button class="btn-secondary" onclick="clearAll()">🗑️ Hepsini Sil</button>
+      </div>
+    </div>
+
+    <div class="stats" id="stats" style="display:none;">
+      <div class="stat">Toplam: <strong id="statTotal">0</strong></div>
+      <div class="stat">Çalışan: <strong id="statOk" style="color:var(--green)">0</strong></div>
+      <div class="stat">Süresi Dolmuş: <strong id="statExp" style="color:var(--orange)">0</strong></div>
+      <div class="stat">Hatalı: <strong id="statFail" style="color:var(--red)">0</strong></div>
+    </div>
+
+    <div class="card">
+      <div id="listContainer">
+        <div class="empty" id="emptyMsg">Henüz link eklenmedi. Yukarıdaki alana link yapıştırıp “Ekle”ye bas.</div>
+        <div class="link-list" id="linkList"></div>
+      </div>
+    </div>
+
+    <footer>Tüm kontroller tarayıcında yapılır. Linklerin hiçbir yere gönderilmez.</footer>
+  </div>
+
+  <script>
+    const STORAGE_KEY = 'xstream_links_v1';
+    let links = [];
+
+    function load() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        links = raw ? JSON.parse(raw) : [];
+      } catch {
+        links = [];
+      }
+      render();
+    }
+
+    function save() {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(links));
+    }
+
+    function uid() {
+      return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+    }
+
+    function addLinks() {
+      const raw = document.getElementById('linksInput').value.trim();
+      if (!raw) return;
+      const lines = raw.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+      let added = 0;
+      for (const url of lines) {
+        if (!/^https?:\/\//i.test(url)) continue;
+        if (links.some(l => l.url === url)) continue;
+        links.push({
+          id: uid(),
+          url,
+          status: 'wait',
+          message: 'Bekliyor',
+          details: null
+        });
+        added++;
+      }
+      document.getElementById('linksInput').value = '';
+      save();
+      render();
+      if (added === 0 && lines.length) alert('Geçerli yeni link bulunamadı (zaten ekli veya http(s) değil).');
+    }
+
+    function removeLink(id) {
+      links = links.filter(l => l.id !== id);
+      save();
+      render();
+    }
+
+    function clearAll() {
+      if (!links.length) return;
+      if (!confirm('Tüm linkler silinecek. Emin misin?')) return;
+      links = [];
+      save();
+      render();
+    }
+
+    function updateStats() {
+      const total = links.length;
+      const ok = links.filter(l => l.status === 'ok').length;
+      const exp = links.filter(l => l.status === 'expired').length;
+      const fail = links.filter(l => l.status === 'fail' || l.status === 'ban').length;
+      document.getElementById('stats').style.display = total ? 'flex' : 'none';
+      document.getElementById('statTotal').textContent = total;
+      document.getElementById('statOk').textContent = ok;
+      document.getElementById('statExp').textContent = exp;
+      document.getElementById('statFail').textContent = fail;
+      document.getElementById('checkAllBtn').disabled = !total;
+    }
+
+    function badgeHtml(status, message) {
+      const map = {
+        wait: ['badge-wait', '⏳'],
+        checking: ['badge-check', '🔄'],
+        ok: ['badge-ok', '✅'],
+        expired: ['badge-exp', '⌛'],
+        ban: ['badge-ban', '🚫'],
+        fail: ['badge-fail', '❌']
+      };
+      const [cls, icon] = map[status] || map.fail;
+      return `<span class="badge ${cls}">${icon} ${escapeHtml(message)}</span>`;
+    }
+
+    function escapeHtml(s) {
+      return String(s)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    function render() {
+      const list = document.getElementById('linkList');
+      const empty = document.getElementById('emptyMsg');
+      if (!links.length) {
+        empty.style.display = 'block';
+        list.innerHTML = '';
+        updateStats();
+        return;
+      }
+      empty.style.display = 'none';
+      list.innerHTML = links.map(l => {
+        let details = '';
+        if (l.details) {
+          const d = l.details;
+          const parts = [];
+          if (d.username) parts.push(`Kullanıcı: ${escapeHtml(d.username)}`);
+          if (d.status) parts.push(`Durum: ${escapeHtml(d.status)}`);
+          if (d.expDate) parts.push(`Bitiş: ${escapeHtml(d.expDate)}`);
+          if (d.maxConn) parts.push(`Max bağlantı: ${escapeHtml(d.maxConn)}`);
+          if (d.activeCons != null) parts.push(`Aktif: ${escapeHtml(d.activeCons)}`);
+          if (d.isTrial != null) parts.push(d.isTrial === '1' ? 'Deneme' : 'Normal');
+          if (parts.length) details = `<div class="link-meta">${parts.join(' · ')}</div>`;
+        }
+        return `
+          <div class="link-item" data-id="${l.id}">
+            <div>
+              <div class="link-url">${escapeHtml(l.url)}</div>
+              ${badgeHtml(l.status, l.message)}
+              ${details}
+            </div>
+            <div class="actions">
+              <button class="btn-secondary btn-sm" onclick="checkOne('${l.id}')">Kontrol</button>
+              <button class="btn-danger btn-sm" onclick="removeLink('${l.id}')">Sil</button>
+            </div>
+          </div>`;
+      }).join('');
+      updateStats();
+    }
+
+    /** URL'den base + username + password çıkar */
+    function parseXtream(url) {
+      try {
+        const u = new URL(url);
+        const user = u.searchParams.get('username');
+        const pass = u.searchParams.get('password');
+        if (!user || !pass) return null;
+        const base = `${u.protocol}//${u.host}`;
+        return { base, username: user, password: pass };
+      } catch {
+        return null;
+      }
+    }
+
+    function formatExpDate(ts) {
+      if (!ts || ts === '0' || ts === 0) return 'Süresiz / Bilinmiyor';
+      const n = Number(ts);
+      if (!Number.isFinite(n) || n < 100000) return String(ts);
+      try {
+        return new Date(n * 1000).toLocaleString('tr-TR');
+      } catch {
+        return String(ts);
+      }
+    }
+
+    async function checkLink(item) {
+      item.status = 'checking';
+      item.message = 'Kontrol ediliyor...';
+      item.details = null;
+      render();
+
+      const parsed = parseXtream(item.url);
+      let apiUrl = null;
+
+      if (parsed) {
+        apiUrl = `${parsed.base}/player_api.php?username=${encodeURIComponent(parsed.username)}&password=${encodeURIComponent(parsed.password)}`;
+      } else if (/player_api\.php/i.test(item.url)) {
+        apiUrl = item.url;
+      }
+
+      // 1) Öncelik: player_api ile hesap durumu
+      if (apiUrl) {
+        try {
+          const res = await fetch(apiUrl, {
+            method: 'GET',
+            mode: 'cors',
+            cache: 'no-store',
+            signal: AbortSignal.timeout(12000)
+          });
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const data = await res.json();
+          const ui = data.user_info || data;
+          const status = (ui.status || '').toString();
+          const exp = ui.exp_date;
+          const now = Math.floor(Date.now() / 1000);
+          const expNum = Number(exp);
+
+          item.details = {
+            username: ui.username || parsed?.username,
+            status: status || '—',
+            expDate: formatExpDate(exp),
+            maxConn: ui.max_connections,
+            activeCons: ui.active_cons,
+            isTrial: ui.is_trial
+          };
+
+          if (/active/i.test(status)) {
+            if (expNum && expNum > 0 && expNum < now) {
+              item.status = 'expired';
+              item.message = 'Süresi dolmuş';
+            } else {
+              item.status = 'ok';
+              item.message = 'Aktif / Çalışıyor';
+            }
+          } else if (/expired|expire/i.test(status)) {
+            item.status = 'expired';
+            item.message = 'Süresi dolmuş';
+          } else if (/ban|disabled|disabled/i.test(status)) {
+            item.status = 'ban';
+            item.message = status || 'Yasaklı / Devre dışı';
+          } else {
+            item.status = 'fail';
+            item.message = status || 'Hesap aktif değil';
+          }
+          render();
+          return;
+        } catch (e) {
+          // CORS veya ağ hatası → fallback
+        }
+      }
+
+      // 2) Fallback: orijinal URL'yi çek (M3U kontrolü)
+      try {
+        const res = await fetch(item.url, {
+          method: 'GET',
+          mode: 'cors',
+          cache: 'no-store',
+          signal: AbortSignal.timeout(12000)
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const text = await res.text();
+        if (text.includes('#EXTM3U') || text.includes('#EXTINF')) {
+          item.status = 'ok';
+          item.message = 'M3U playlist geçerli';
+          item.details = { status: 'Playlist OK' };
+        } else if (text.trim().startsWith('{')) {
+          try {
+            const data = JSON.parse(text);
+            const ui = data.user_info || data;
+            item.details = {
+              username: ui.username,
+              status: ui.status,
+              expDate: formatExpDate(ui.exp_date)
+            };
+            if (/active/i.test(ui.status || '')) {
+              item.status = 'ok';
+              item.message = 'Aktif';
+            } else {
+              item.status = 'fail';
+              item.message = ui.status || 'Aktif değil';
+            }
+          } catch {
+            item.status = 'ok';
+            item.message = 'Yanıt alındı (içerik belirsiz)';
+          }
+        } else {
+          item.status = 'fail';
+          item.message = 'Geçersiz yanıt (M3U değil)';
+        }
+      } catch (err) {
+        const msg = (err && err.name === 'TimeoutError')
+          ? 'Zaman aşımı'
+          : (err && err.message) || 'Erişim hatası';
+        // CORS çoğu IPTV sunucusunda engel olur
+        if (/Failed to fetch|NetworkError|CORS|blocked/i.test(String(err))) {
+          item.status = 'fail';
+          item.message = 'Erişim engellendi (CORS / ağ)';
+        } else {
+          item.status = 'fail';
+          item.message = msg;
+        }
+      }
+      render();
+    }
+
+    async function checkOne(id) {
+      const item = links.find(l => l.id === id);
+      if (!item) return;
+      await checkLink(item);
+      save();
+    }
+
+    async function checkAll() {
+      const btn = document.getElementById('checkAllBtn');
+      btn.disabled = true;
+      btn.textContent = 'Kontrol ediliyor...';
+      for (const item of links) {
+        await checkLink(item);
+        save();
+        // hafif bekleme (sunucuyu yormamak için)
+        await new Promise(r => setTimeout(r, 400));
+      }
+      btn.disabled = false;
+      btn.textContent = '🔍 Tümünü Kontrol Et';
+    }
+
+    // Enter ile ekleme (Ctrl+Enter textarea'da)
+    document.getElementById('linksInput').addEventListener('keydown', e => {
+      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        addLinks();
+      }
+    });
+
+    load();
+  </script>
+</body>
+</html>
