@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<title>M3U Film Tarayıcı - Çeşitli Tür + İlerleme</title>
+<style>
+  body { font-family: Arial, sans-serif; background:#1e1e2e; color:#eee; max-width:800px; margin:30px auto; padding:20px; }
+  .kutu { background:#2a2a3d; padding:20px; border-radius:10px; margin-bottom:15px; }
+  input, select, button { padding:10px; border-radius:6px; border:none; margin:5px 0; width:100%; box-sizing:border-box; }
+  button { background:#7c3aed; color:#fff; font-size:16px; cursor:pointer; }
+  button:disabled { background:#555; cursor:not-allowed; }
+  #durum { white-space:pre-line; font-size:14px; color:#9fe89f; line-height:1.6; }
+  #liste { max-height:400px; overflow-y:auto; font-size:12px; background:#111; padding:10px; border-radius:6px; margin-top:10px; }
+
+  /* İlerleme çubuğu */
+  .progress-container { width:100%; background:#333; border-radius:8px; overflow:hidden; margin:10px 0; height:24px; position:relative; }
+  .progress-bar { height:100%; background:linear-gradient(90deg, #7c3aed, #a855f7); width:0%; transition:width 0.3s ease; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:bold; color:#fff; }
+
+  .tur-rozet { display:inline-block; background:#4a4a6a; padding:2px 8px; border-radius:12px; font-size:11px; margin-right:4px; color:#ccc; }
+  .istatistik { color:#74c0fc; font-size:13px; }
+</style>
+</head>
+<body>
+<h2>🎬 M3U Eksik Film Tarayıcı (Çeşitli Tür + İlerleme)</h2>
+
+<div class="kutu">
+  <label>TMDB API Anahtarı:</label>
+  <input type="text" id="apikey" placeholder="API anahtarınızı girin">
+
+  <label>M3U Dosyası:</label>
+  <input type="file" id="dosya" accept=".m3u,.m3u8">
+
+  <label>Kaç film önerilsin?</label>
+  <select id="adet">
+    <option>1000</option>
+    <option selected>5000</option>
+    <option>10000</option>
+  </select>
+
+  <button id="tara" onclick="tara()">🔍 ÇEŞİTLİ TÜR TARAMA BAŞLAT</button>
+</div>
+
+<div class="kutu">
+  <div id="durum">Hazır. Her türden rastgele film tarar.</div>
+  <div class="progress-container" id="progressBox" style="display:none;">
+    <div class="progress-bar" id="progressBar">0%</div>
+  </div>
+  <div id="liste"></div>
+  <button id="indir" style="display:none" onclick="indir()">💾 Zengin M3U İndir</button>
+</div>
+
+<script>
+const VIDMODY = "https://vidmody.com/vs/";
+let bulunanlar = [];
+let toplamIstek = 0;
+let baslangicZamani = 0;
+
+// TMDB Tür ID'leri
+const TUR_IDLERI = [
+  {id: 28, ad: "Aksiyon"}, {id: 12, ad: "Macera"}, {id: 16, ad: "Animasyon"},
+  {id: 35, ad: "Komedi"}, {id: 80, ad: "Suç"}, {id: 99, ad: "Belgesel"},
+  {id: 18, ad: "Drama"}, {id: 10751, ad: "Aile"}, {id: 14, ad: "Fantastik"},
+  {id: 36, ad: "Tarih"}, {id: 27, ad: "Korku"}, {id: 10402, ad: "Müzik"},
+  {id: 9648, ad: "Gizem"}, {id: 10749, ad: "Romantik"}, {id: 878, ad: "Bilim Kurgu"},
+  {id: 10770, ad: "TV Film"}, {id: 53, ad: "Gerilim"}, {id: 10752, ad: "Savaş"},
+  {id: 37, ad: "Western"}
+];
+
+const RATE_LIMIT_MS = 55;
+const BACKOFF_MS = 2000;
+const MAX_BACKOFF_MS = 30000;
+const PARALELLIK = 2;
+
+let sonIstekZamani = 0;
+let backoffLevel = 0;
+
+function normalize(ad) {
+  return ad.toLowerCase()
+    .replace(/\(\d{4}\)|\[\d{4}\]|\b\d{4}\b/g, "")
+    .replace(/\b(1080p|720p|4k|fhd|hd|uhd|tr|dublaj|altyazı|altyazili|turkce|türkçe|yerli|bluray|webrip|x264|x265|aac|extended|unrated|directors cut)\b/gi, "")
+    .replace(/[^a-zçğıöşü0-9 ]/gi, "")
+    .replace(/\s+/g, " ").trim();
+}
+
+function m3uOku(metin) {
+  const adlar = new Set();
+  metin.split("\n").forEach(satir => {
+    if (satir.startsWith("#EXTINF")) {
+      const ad = satir.substring(satir.lastIndexOf(",") + 1);
+      if (ad.trim()) adlar.add(normalize(ad));
+    }
+  });
+  return adlar;
+}
+
+function delay(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function guvenliFetch(url, deneme = 0) {
+  const simdi = Date.now();
+  const gecen = simdi - sonIstekZamani;
+  if (gecen < RATE_LIMIT_MS) {
+    await delay(RATE_LIMIT_MS - gecen);
+  }
+
+  toplamIstek++;
+  sonIstekZamani = Date.now();
+
+  try {
+    const res = await fetch(url);
+
+    if (res.status === 429) {
+      const bekle = Math.min(BACKOFF_MS * Math.pow(2, backoffLevel), MAX_BACKOFF_MS);
+      backoffLevel++;
+      guncelleDurum(`⏳ TMDB rate limit! ${bekle/1000}s bekleniyor... (Deneme: ${deneme+1})`);
+      await delay(bekle);
+      return guvenliFetch(url, deneme + 1);
+    }
+
+    if (res.ok) {
+      backoffLevel = Math.max(0, backoffLevel - 1);
+    }
+
+    return res;
+  } catch (err) {
+    if (deneme < 3) {
+      await delay(1000 * (deneme + 1));
+      return guvenliFetch(url, deneme + 1);
+    }
+    throw err;
+  }
+}
+
+async function guvenliParalel(gorevler, eszamanli = PARALELLIK, ilerlemeCallback = null) {
+  const sonuclar = [];
+  let index = 0;
+
+  async function worker() {
+    while (index < gorevler.length) {
+      const i = index++;
+      try {
+        sonuclar[i] = await gorevler[i]();
+      } catch (e) {
+        sonuclar[i] = null;
+      }
+      if (ilerlemeCallback) {
+        ilerlemeCallback(sonuclar.filter(s => s !== undefined).length, gorevler.length);
+      }
+      await delay(RATE_LIMIT_MS);
+    }
+  }
+
+  const workers = Array.from({ length: Math.min(eszamanli, gorevler.length) }, () => worker());
+  await Promise.all(workers);
+  return sonuclar;
+}
+
+function guncelleDurum(metin) {
+  document.getElementById("durum").innerHTML = metin;
+}
+
+function guncelleProgress(yuzde, metin = "") {
+  const bar = document.getElementById("progressBar");
+  const box = document.getElementById("progressBox");
+  box.style.display = "block";
+  const p = Math.min(100, Math.max(0, Math.round(yuzde)));
+  bar.style.width = p + "%";
+  bar.textContent = metin ? `${metin} (${p}%)` : `${p}%`;
+}
+
+async function genreListesiGetir(apikey) {
+  const url = `https://api.themoviedb.org/3/genre/movie/list?api_key=${apikey}&language=tr-TR`;
+  const res = await guvenliFetch(url);
+  if (!res.ok) return {};
+  const veri = await res.json();
+  const map = {};
+  veri.genres.forEach(g => map[g.id] = g.name);
+  return map;
+}
+
+async function turdenFilmGetir(apikey, turId, sayfa) {
+  // Her tür için farklı rastgele parametreler
+  const yilBas = 1950 + Math.floor(Math.random() * 50);
+  const yilBit = Math.min(yilBas + 15 + Math.floor(Math.random() * 15), 2026);
+  const sortlar = ["popularity.desc", "vote_average.desc", "vote_count.desc", "revenue.desc", "primary_release_date.desc"];
+  const sort = sortlar[Math.floor(Math.random() * sortlar.length)];
+  const minVote = 5 + Math.floor(Math.random() * 45); // 5-50 arası değişken
+
+  const url = `https://api.themoviedb.org/3/discover/movie?api_key=${apikey}&language=tr-TR&sort_by=${sort}&with_genres=${turId}&primary_release_date.gte=${yilBas}-01-01&primary_release_date.lte=${yilBit}-12-31&vote_count.gte=${minVote}&page=${sayfa}`;
+
+  const res = await guvenliFetch(url);
+  if (!res.ok) return [];
+  const veri = await res.json();
+  return veri.results || [];
+}
+
+async function imdbGetir(filmId, apikey) {
+  const url = `https://api.themoviedb.org/3/movie/${filmId}/external_ids?api_key=${apikey}`;
+  const res = await guvenliFetch(url);
+  if (!res.ok) return null;
+  const veri = await res.json();
+  return veri.imdb_id || null;
+}
+
+async function tara() {
+  const apikey = document.getElementById("apikey").value.trim();
+  const dosya = document.getElementById("dosya").files[0];
+  const hedef = parseInt(document.getElementById("adet").value);
+
+  if (!apikey || !dosya) {
+    guncelleDurum("⚠️ API anahtarı ve M3U dosyası gerekli!");
+    return;
+  }
+
+  document.getElementById("tara").disabled = true;
+  document.getElementById("indir").style.display = "none";
+  document.getElementById("liste").innerHTML = "";
+  guncelleProgress(0);
+
+  baslangicZamani = Date.now();
+  toplamIstek = 0;
+  bulunanlar = [];
+
+  // 1) Tür listesi
+  guncelleDurum("Tür listesi çekiliyor...");
+  const genreMap = await genreListesiGetir(apikey);
+
+  // 2) M3U oku
+  const metin = await dosya.text();
+  const bendekiler = m3uOku(metin);
+
+  const tahminiSure = Math.ceil((hedef * 1.5 * RATE_LIMIT_MS * 2) / 1000 / 60);
+  guncelleDurum(
+    `📁 Dosyanızda ${bendekiler.size} film bulundu.\n` +
+    `🎯 Hedef: ${hedef} film\n` +
+    `🎭 Taranacak türler: ${TUR_IDLERI.length} farklı tür\n` +
+    `⏱️ Tahmini süre: ~${tahminiSure} dakika`
+  );
+
+  // 3) FAZ 1: Her türden rastgele sayfalar çek
+  const adayFilmler = [];
+  const eklenenIdler = new Set();
+  const adayHedef = Math.min(hedef * 4, 20000); // Daha fazla aday (tür çeşitliliği için)
+
+  // Her tür için kaç sayfa çekilecek
+  const turBasinaSayfa = Math.max(3, Math.ceil((adayHedef / 20) / TUR_IDLERI.length));
+
+  guncelleDurum(`🎬 Faz 1/2: Her türden film toplanıyor...\nToplam ~${turBasinaSayfa * TUR_IDLERI.length} sayfa taranacak.`);
+
+  let toplamSayfa = 0;
+
+  for (const tur of TUR_IDLERI) {
+    // Her tür için rastgele sayfalar (TMDB max 500 sayfa)
+    const sayfalar = [];
+    for (let i = 0; i < turBasinaSayfa; i++) {
+      sayfalar.push(Math.floor(Math.random() * 400) + 1);
+    }
+
+    for (const sayfa of sayfalar) {
+      const filmler = await turdenFilmGetir(apikey, tur.id, sayfa);
+
+      for (const film of filmler) {
+        if (eklenenIdler.has(film.id)) continue;
+        if (!film.title) continue;
+
+        const norm = normalize(film.title);
+        if (norm && !bendekiler.has(norm)) {
+          // Tür bilgisini zenginleştir
+          film._turAdi = tur.ad;
+          film._turId = tur.id;
+          adayFilmler.push(film);
+          eklenenIdler.add(film.id);
+        }
+      }
+
+      toplamSayfa++;
+      const faz1Yuzde = Math.min(45, (toplamSayfa / (turBasinaSayfa * TUR_IDLERI.length)) * 45);
+      guncelleProgress(faz1Yuzde, `Faz 1: ${tur.ad} türünden çekiliyor`);
+
+      // Her 5 sayfada durum güncelle
+      if (toplamSayfa % 5 === 0) {
+        const gecen = ((Date.now() - baslangicZamani) / 1000 / 60).toFixed(1);
+        guncelleDurum(
+          `🎬 Faz 1/2: Tür bazlı tarama\n` +
+          `Şu anki tür: <b>${tur.ad}</b> | Sayfa: ${sayfa}\n` +
+          `Toplam aday: ${adayFilmler.length} | İstek: ${toplamIstek}\n` +
+          `Geçen süre: ${gecen} dk`
+        );
+      }
+
+      if (adayFilmler.length >= adayHedef) break;
+    }
+    if (adayFilmler.length >= adayHedef) break;
+  }
+
+  if (adayFilmler.length === 0) {
+    guncelleDurum("❌ Hiç aday film bulunamadı. API anahtarınızı kontrol edin.");
+    document.getElementById("tara").disabled = false;
+    return;
+  }
+
+  // Karıştır (tür çeşitliliği için)
+  for (let i = adayFilmler.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [adayFilmler[i], adayFilmler[j]] = [adayFilmler[j], adayFilmler[i]];
+  }
+
+  guncelleDurum(
+    `✅ Faz 1 tamam! ${adayFilmler.length} aday toplandı.\n` +
+    `⏳ Faz 2: IMDB ID'leri alınıyor...`
+  );
+
+  // 4) FAZ 2: IMDB ID'lerini batch batch al + İLERLEME GÖSTER
+  const imdbHedef = Math.min(hedef * 2, adayFilmler.length);
+  const BATCH_BOYUT = 50; // Her 50 filmde bir ilerleme güncelle
+
+  let imdbBasarili = 0;
+  let islenen = 0;
+
+  for (let batchStart = 0; batchStart < imdbHedef; batchStart += BATCH_BOYUT) {
+    const batchEnd = Math.min(batchStart + BATCH_BOYUT, imdbHedef);
+    const batch = adayFilmler.slice(batchStart, batchEnd);
+
+    const imdbSonuclari = await guvenliParalel(
+      batch.map(film => () => imdbGetir(film.id, apikey)),
+      PARALELLIK
+    );
+
+    for (let i = 0; i < imdbSonuclari.length && bulunanlar.length < hedef; i++) {
+      const imdb = imdbSonuclari[i];
+      if (!imdb) continue;
+
+      const film = batch[i];
+      const yil = (film.release_date || "").substring(0, 4);
+      const logo = film.poster_path ? `https://image.tmdb.org/t/p/w300${film.poster_path}` : "";
+      const turler = (film.genre_ids || []).map(id => genreMap[id]).filter(Boolean).join(", ");
+
+      bulunanlar.push({
+        ad: `${film.title}${yil ? " (" + yil + ")" : ""}`,
+        imdb: imdb,
+        logo: logo,
+        genres: turler || film._turAdi || "Diğer",
+        tvgid: imdb,
+        kaynakTur: film._turAdi || "Bilinmiyor"
+      });
+      imdbBasarili++;
+    }
+
+    islenen += batch.length;
+
+    // İLERLEME GÜNCELLE (Faz 1 = 45%, Faz 2 = 55%)
+    const faz2Yuzde = 45 + Math.min(55, (islenen / imdbHedef) * 55);
+    const kalan = Math.ceil(((imdbHedef - islenen) * RATE_LIMIT_MS * 2) / 1000 / 60);
+
+    guncelleProgress(faz2Yuzde, `Faz 2: IMDB ID alınıyor`);
+
+    // Her 100 filmde detaylı durum
+    if (islenen % 100 === 0 || batchEnd >= imdbHedef) {
+      const gecen = ((Date.now() - baslangicZamani) / 1000 / 60).toFixed(1);
+      guncelleDurum(
+        `🎬 Faz 2/2: IMDB ID eşleştirme\n` +
+        `İşlenen: ${islenen}/${imdbHedef} | Bulunan: ${bulunanlar.length}/${hedef}\n` +
+        `Başarı oranı: ${imdbBasarili}/${islenen} | Kalan: ~${kalan} dk\n` +
+        `İstek: ${toplamIstek} | Geçen: ${gecen} dk`
+      );
+    }
+  }
+
+  // 5) Sonuçlar
+  const toplamSure = ((Date.now() - baslangicZamani) / 1000 / 60).toFixed(1);
+  guncelleProgress(100, "Tamamlandı");
+
+  // Tür dağılımı istatistiği
+  const turDagilimi = {};
+  bulunanlar.forEach(f => {
+    turDagilimi[f.kaynakTur] = (turDagilimi[f.kaynakTur] || 0) + 1;
+  });
+  const turOzeti = Object.entries(turDagilimi)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 8)
+    .map(([tur, adet]) => `<span class="tur-rozet">${tur}: ${adet}</span>`)
+    .join(" ");
+
+  document.getElementById("liste").innerHTML =
+    `<div class="istatistik">🎭 Tür dağılımı: ${turOzeti}</div><br>` +
+    bulunanlar.slice(0, 20).map((f, i) => {
+      return `${i + 1}. ${f.ad} <span style="color:#888">[${f.genres}]</span>`;
+    }).join("<br>") +
+    (bulunanlar.length > 20 ? `<br>... ve ${bulunanlar.length - 20} film daha` : "");
+
+  guncelleDurum(
+    `✅ TAMAMLANDI!\n` +
+    `🎬 ${bulunanlar.length} farklı film bulundu\n` +
+    `📊 Toplam API isteği: ${toplamIstek}\n` +
+    `⏱️ Süre: ${toplamSure} dakika\n` +
+    `🛡️ Rate limit: Güvenli mod aktif`
+  );
+
+  document.getElementById("indir").style.display = "block";
+  document.getElementById("tara").disabled = false;
+}
+
+function indir() {
+  let icerik = "#EXTM3U\n";
+  bulunanlar.forEach(f => {
+    const extinf = `#EXTINF:-1 tvg-id="${f.tvgid}" tvg-logo="${f.logo}" group-title="${f.genres}",${f.ad}`;
+    icerik += extinf + "\n";
+    icerik += `${VIDMODY}${f.imdb}\n`;
+  });
+  const blob = new Blob([icerik], { type: "audio/x-mpegurl" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `eksik_filmler_${bulunanlar.length}_cesitli.m3u`;
+  a.click();
+}
+</script>
+</body>
+</html>
