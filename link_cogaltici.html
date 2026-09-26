@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Akıllı Link Çoğaltıcı → M3U</title>
+<style>
+  :root {
+    --bg: #0f1419;
+    --card: #1a2332;
+    --border: #2d3a4d;
+    --text: #e7ecf3;
+    --muted: #8b9bb4;
+    --accent: #3b82f6;
+    --accent2: #22c55e;
+    --warn: #f59e0b;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh;
+    font-family: "Segoe UI", system-ui, sans-serif;
+    background: var(--bg); color: var(--text);
+    padding: 24px;
+  }
+  h1 { font-size: 1.35rem; margin: 0 0 4px; }
+  .sub { color: var(--muted); font-size: 0.9rem; margin-bottom: 20px; }
+  .card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 12px; padding: 18px 20px; margin-bottom: 16px;
+    max-width: 920px;
+  }
+  label { display: block; font-size: 0.85rem; color: var(--muted); margin-bottom: 6px; }
+  textarea, input, select {
+    width: 100%; padding: 10px 12px; border-radius: 8px;
+    border: 1px solid var(--border); background: #0d1218; color: var(--text);
+    font-family: Consolas, "Courier New", monospace; font-size: 0.9rem;
+  }
+  textarea { min-height: 72px; resize: vertical; }
+  .row { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 12px; }
+  .row > div { flex: 1; min-width: 120px; }
+  button {
+    cursor: pointer; border: none; border-radius: 8px;
+    padding: 11px 18px; font-weight: 600; font-size: 0.95rem;
+  }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-primary:hover { filter: brightness(1.1); }
+  .btn-green { background: var(--accent2); color: #052e16; }
+  .btn-ghost { background: transparent; color: var(--muted); border: 1px solid var(--border); }
+  .candidates {
+    display: flex; flex-direction: column; gap: 8px; margin-top: 10px;
+  }
+  .cand {
+    display: flex; align-items: flex-start; gap: 10px;
+    padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border);
+    background: #0d1218; cursor: pointer;
+  }
+  .cand:hover, .cand.selected { border-color: var(--accent); background: #132033; }
+  .cand input { width: auto; margin-top: 3px; }
+  .cand code { font-size: 0.82rem; word-break: break-all; color: #a5d6ff; }
+  .cand .meta { font-size: 0.78rem; color: var(--muted); margin-top: 4px; }
+  .preview {
+    margin-top: 10px; padding: 10px; background: #0d1218; border-radius: 8px;
+    font-size: 0.8rem; color: var(--muted); word-break: break-all; max-height: 120px; overflow: auto;
+  }
+  .stats { color: var(--warn); font-size: 0.9rem; margin-top: 8px; }
+  .log { font-size: 0.85rem; color: var(--muted); margin-top: 8px; white-space: pre-wrap; }
+  .actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 14px; }
+</style>
+</head>
+<body>
+  <h1>Akıllı Link Çoğaltıcı</h1>
+  <p class="sub">Linkteki sayıyı otomatik bulur · seçtiğin aralıkta çoğaltır · M3U indirir</p>
+
+  <div class="card">
+    <label>Örnek link (yapıştır)</label>
+    <textarea id="url" placeholder="http://.../play/live.php?mac=...&stream=615829&extension=ts&#10;veya herhangi bir URL içinde sayı"></textarea>
+    <div class="actions">
+      <button type="button" class="btn-primary" onclick="scan()">Sayıları tara</button>
+      <button type="button" class="btn-ghost" onclick="clearAll()">Temizle</button>
+    </div>
+    <div class="log" id="scanLog"></div>
+  </div>
+
+  <div class="card" id="candCard" style="display:none">
+    <label>Çoğaltılacak sayıyı seç</label>
+    <div class="candidates" id="candidates"></div>
+  </div>
+
+  <div class="card" id="rangeCard" style="display:none">
+    <div class="row">
+      <div>
+        <label>Başlangıç</label>
+        <input type="number" id="start" value="1" min="0" />
+      </div>
+      <div>
+        <label>Bitiş</label>
+        <input type="number" id="end" value="1000" min="1" />
+      </div>
+      <div>
+        <label>Adım</label>
+        <input type="number" id="step" value="1" min="1" />
+      </div>
+      <div>
+        <label>Kanal adı öneki</label>
+        <input type="text" id="prefix" value="CH" />
+      </div>
+    </div>
+    <div class="row">
+      <div>
+        <label>group-title</label>
+        <input type="text" id="group" value="Generated" />
+      </div>
+      <div>
+        <label>Hızlı aralık</label>
+        <select id="preset" onchange="applyPreset()">
+          <option value="">— seç —</option>
+          <option value="1-100">1 – 100</option>
+          <option value="1-1000">1 – 1.000</option>
+          <option value="1-10000">1 – 10.000</option>
+          <option value="1-100000">1 – 100.000</option>
+          <option value="1-999999">1 – 999.999 (çok büyük dosya)</option>
+        </select>
+      </div>
+    </div>
+    <div class="preview" id="preview"></div>
+    <div class="stats" id="stats"></div>
+    <div class="actions">
+      <button type="button" class="btn-green" onclick="downloadM3U()">M3U indir</button>
+      <button type="button" class="btn-ghost" onclick="copySample()">İlk 5 linki kopyala</button>
+    </div>
+    <div class="log" id="genLog"></div>
+  </div>
+
+<script>
+/** Tespit edilen aday: { kind, key, value, index?, template } */
+let selected = null;
+let baseUrl = "";
+
+function clearAll() {
+  document.getElementById("url").value = "";
+  document.getElementById("candidates").innerHTML = "";
+  document.getElementById("candCard").style.display = "none";
+  document.getElementById("rangeCard").style.display = "none";
+  document.getElementById("scanLog").textContent = "";
+  document.getElementById("genLog").textContent = "";
+  selected = null;
+}
+
+function applyPreset() {
+  const v = document.getElementById("preset").value;
+  if (!v) return;
+  const [a, b] = v.split("-");
+  document.getElementById("start").value = a;
+  document.getElementById("end").value = b;
+  updatePreview();
+}
+
+/**
+ * URL içindeki çoğaltılabilecek sayıları bul.
+ * Öncelik: query stream/id/channel/ch ... sonra path sayıları, sonra diğer query sayıları.
+ */
+function findCandidates(urlStr) {
+  const results = [];
+  let u;
+  try {
+    u = new URL(urlStr.trim());
+  } catch {
+    // scheme yoksa dene
+    try { u = new URL("http://" + urlStr.trim()); } catch { return results; }
+  }
+
+  const priorityKeys = [
+    "stream", "stream_id", "streamid", "ch", "channel", "channel_id",
+    "id", "cid", "sid", "num", "number", "chno", "tvg-id"
+  ];
+
+  // 1) Query parametreleri
+  for (const [key, value] of u.searchParams.entries()) {
+    if (/^\d+$/.test(value) && value.length >= 1) {
+      const pri = priorityKeys.indexOf(key.toLowerCase());
+      results.push({
+        kind: "query",
+        key,
+        value,
+        priority: pri >= 0 ? pri : 50 + key.length,
+        label: `Query ?${key}=${value}`,
+        build: (n) => {
+          const x = new URL(u.href);
+          x.searchParams.set(key, String(n));
+          return x.href;
+        }
+      });
+    }
+  }
+
+  // 2) Path içindeki sayı segmentleri (örn. /live/12345/  veya /ch/999.ts)
+  const path = u.pathname;
+  const pathRe = /(\/|^)(\d{2,})(?=\/|\.|$)/g;
+  let m;
+  const pathHits = [];
+  while ((m = pathRe.exec(path)) !== null) {
+    pathHits.push({ value: m[2], index: m.index + m[1].length, len: m[2].length });
+  }
+  pathHits.forEach((hit, i) => {
+    results.push({
+      kind: "path",
+      key: `path#${i}`,
+      value: hit.value,
+      priority: 20 + i,
+      label: `Path sayısı: …${hit.value}…`,
+      build: (n) => {
+        const num = String(n);
+        const newPath =
+          path.slice(0, hit.index) + num + path.slice(hit.index + hit.len);
+        const x = new URL(u.href);
+        x.pathname = newPath;
+        return x.href;
+      }
+    });
+  });
+
+  // 3) Fragment veya ham metinde stream=123 kalıbı (URL parse kaçımsa)
+  const raw = urlStr;
+  const embedRe = /([?&](?:stream|id|channel|ch|cid)=)(\d+)/gi;
+  let em;
+  while ((em = embedRe.exec(raw)) !== null) {
+    const prefix = em[1];
+    const val = em[2];
+    const already = results.some(r => r.kind === "query" && r.value === val);
+    if (already) continue;
+    const start = em.index;
+    results.push({
+      kind: "raw",
+      key: prefix,
+      value: val,
+      priority: 5,
+      label: `Metin: ${prefix}${val}`,
+      build: (n) => raw.slice(0, start) + prefix + String(n) + raw.slice(start + em[0].length)
+    });
+  }
+
+  results.sort((a, b) => a.priority - b.priority);
+  // aynı value+kind tekilleştir
+  const seen = new Set();
+  return results.filter(r => {
+    const k = r.kind + ":" + r.key + ":" + r.value;
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+}
+
+function scan() {
+  const url = document.getElementById("url").value.trim();
+  const log = document.getElementById("scanLog");
+  if (!url) {
+    log.textContent = "Link yapıştır.";
+    return;
+  }
+  baseUrl = url;
+  const cands = findCandidates(url);
+  const box = document.getElementById("candidates");
+  box.innerHTML = "";
+  if (!cands.length) {
+    log.textContent = "Sayı bulunamadı. Linkte stream=123 veya path içinde sayı olmalı.";
+    document.getElementById("candCard").style.display = "none";
+    document.getElementById("rangeCard").style.display = "none";
+    return;
+  }
+  log.textContent = cands.length + " aday bulundu. Çoğaltmak istediğini seç.";
+  document.getElementById("candCard").style.display = "block";
+  document.getElementById("rangeCard").style.display = "block";
+
+  cands.forEach((c, i) => {
+    const div = document.createElement("label");
+    div.className = "cand" + (i === 0 ? " selected" : "");
+    div.innerHTML =
+      `<input type="radio" name="cand" value="${i}" ${i === 0 ? "checked" : ""} />` +
+      `<div><div><code>${escapeHtml(c.label)}</code></div>` +
+      `<div class="meta">${c.kind} · örnek: ${escapeHtml(c.build(Number(c.value)).slice(0, 120))}…</div></div>`;
+    div.querySelector("input").addEventListener("change", () => {
+      document.querySelectorAll(".cand").forEach(el => el.classList.remove("selected"));
+      div.classList.add("selected");
+      selected = cands[i];
+      // başlangıç olarak mevcut değeri öner
+      document.getElementById("start").value = "1";
+      updatePreview();
+    });
+    box.appendChild(div);
+  });
+  selected = cands[0];
+  updatePreview();
+  ["start", "end", "step", "prefix"].forEach(id => {
+    document.getElementById(id).oninput = updatePreview;
+  });
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, ch => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+  })[ch]);
+}
+
+function getRange() {
+  let start = parseInt(document.getElementById("start").value, 10);
+  let end = parseInt(document.getElementById("end").value, 10);
+  let step = parseInt(document.getElementById("step").value, 10) || 1;
+  if (isNaN(start)) start = 1;
+  if (isNaN(end)) end = start;
+  if (step < 1) step = 1;
+  if (end < start) { const t = start; start = end; end = t; }
+  return { start, end, step };
+}
+
+function countItems(start, end, step) {
+  return Math.floor((end - start) / step) + 1;
+}
+
+function updatePreview() {
+  if (!selected) return;
+  const { start, end, step } = getRange();
+  const n = countItems(start, end, step);
+  const sample = [start, start + step, end].filter((v, i, a) => a.indexOf(v) === i);
+  document.getElementById("preview").textContent = sample
+    .map(v => selected.build(v))
+    .join("\n");
+  const approxKB = Math.round((n * 120) / 1024);
+  document.getElementById("stats").textContent =
+    `Toplam satır: ${n.toLocaleString("tr-TR")} · tahmini M3U ~${approxKB} KB` +
+    (n > 100000 ? " · UYARI: çok büyük dosya, tarayıcı kilitlenebilir" : "");
+}
+
+function buildM3U() {
+  if (!selected) throw new Error("Aday seçilmedi");
+  const { start, end, step } = getRange();
+  const prefix = document.getElementById("prefix").value || "CH";
+  const group = document.getElementById("group").value || "Generated";
+  const n = countItems(start, end, step);
+  if (n > 500000) {
+    throw new Error("En fazla 500.000 satır. Aralığı küçült.");
+  }
+  const parts = ["#EXTM3U\n"];
+  for (let i = start; i <= end; i += step) {
+    const name = `${prefix} ${i}`;
+    const href = selected.build(i);
+    parts.push(`#EXTINF:-1 tvg-id="${i}" tvg-chno="${i}" group-title="${group}",${name}\n`);
+    parts.push(href + "\n");
+  }
+  return parts.join("");
+}
+
+function downloadM3U() {
+  const log = document.getElementById("genLog");
+  try {
+    updatePreview();
+    const { start, end } = getRange();
+    const n = countItems(start, end, parseInt(document.getElementById("step").value, 10) || 1);
+    if (n > 100000 && !confirm(`${n} satır üretilecek. Devam?`)) return;
+    log.textContent = "Üretiliyor…";
+    setTimeout(() => {
+      try {
+        const body = buildM3U();
+        const blob = new Blob([body], { type: "audio/x-mpegurl" });
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = `links_${start}-${end}.m3u`;
+        a.click();
+        URL.revokeObjectURL(a.href);
+        log.textContent = `İndirildi: links_${start}-${end}.m3u (${n} kanal)`;
+      } catch (e) {
+        log.textContent = "Hata: " + e.message;
+      }
+    }, 50);
+  } catch (e) {
+    log.textContent = "Hata: " + e.message;
+  }
+}
+
+function copySample() {
+  if (!selected) return;
+  const { start, step } = getRange();
+  const lines = [];
+  for (let i = 0; i < 5; i++) {
+    lines.push(selected.build(start + i * step));
+  }
+  navigator.clipboard.writeText(lines.join("\n")).then(() => {
+    document.getElementById("genLog").textContent = "İlk 5 link panoya kopyalandı.";
+  });
+}
+</script>
+</body>
+</html>
