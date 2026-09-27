@@ -6,6 +6,11 @@ import time
 import hashlib
 import tempfile
 import requests
+try:
+    import urllib3
+    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+except Exception:
+    pass
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QTableWidget, QTableWidgetItem,
                              QVBoxLayout, QWidget, QMenu, QHeaderView,
@@ -1184,43 +1189,228 @@ class BulkEditDialog(QDialog):
 #  PARALEL LİNK KONTROL İŞÇİSİ
 # ──────────────────────────────────────────────────────────────────────
 class LinkCheckWorker(QThread):
+    """
+    IPTV / VOD link kontrolü.
+
+    Eski yöntem sorunları (VLC'de açılan linkleri ÖLÜ sayıyordu):
+      • Range: bytes=0-1  → birçok CDN / HLS 403 veya 416 döner
+      • Sadece birkaç HTTP kodu "canlı" sayılıyordu
+      • 30 paralel istek → sunucu rate-limit / bağlantı reddi → yanlış KAPALI
+      • Gövde hiç okunmuyordu; #EXTM3U / TS imzası doğrulanmıyordu
+
+    Yeni yöntem:
+      1) VLC benzeri UA ile GET (Range YOK)
+      2) Gerekirse Range ile ikinci deneme
+      3) .m3u8 ise içerikte #EXTM3U ara
+      4) TS/medya imzası (0x47) veya yeterli bayt = canlı
+      5) 401/403 tek başına ölü sayılmaz (çoğu token'lı yayın böyle başlar;
+         kısa gövde + medya imzası varsa AKTİF)
+    """
     result_ready = pyqtSignal(int, str, object)   # row, status_text, QColor
     progress     = pyqtSignal(int, int, str)      # done, total, url
     finished     = pyqtSignal(int, int, int)      # active, dead, error
 
-    def __init__(self, rows_urls, workers=30, timeout=8):
+    def __init__(self, rows_urls, workers=12, timeout=12):
         """
         rows_urls : [(row_index, url), ...]
-        workers   : eş zamanlı bağlantı sayısı
-        timeout   : saniye cinsinden bağlantı zaman aşımı
+        workers   : eş zamanlı bağlantı (varsayılan 12 — 30 çok agresifti)
+        timeout   : saniye
         """
         super().__init__()
         self.rows_urls = rows_urls
-        self.workers   = workers
-        self.timeout   = timeout
+        self.workers   = max(1, min(int(workers), 40))
+        self.timeout   = max(4, int(timeout))
         self._stop     = False
 
     def stop(self):
         self._stop = True
 
-    def _check_one(self, row, url):
-        """Tek bir linki kontrol eder; (row, status, color) döner."""
-        ok_codes = {200, 206, 301, 302, 307, 308}
-        player_hdr = {
-            "User-Agent": "VLC/3.0.18 LibVLC/3.0.18",
-            "Range": "bytes=0-1",
+    @staticmethod
+    def _headers(range_bytes=False):
+        h = {
+            "User-Agent": "VLC/3.0.20 LibVLC/3.0.20",
+            "Accept": "*/*",
             "Connection": "close",
+            "Icy-MetaData": "1",
         }
+        if range_bytes:
+            h["Range"] = "bytes=0-65535"
+        return h
+
+    def _probe(self, url: str, use_range: bool):
+        """
+        (ok: bool, status_code: int|None, detail: str)
+        ok=True  → yayın büyük olasılıkla oynatılabilir
+        """
         try:
-            r = requests.get(url, timeout=self.timeout, headers=player_hdr,
-                             allow_redirects=True, stream=True)
-            r.close()
-            if r.status_code in ok_codes:
-                return row, "AKTİF ✅", QColor(0, 150, 0)
-            else:
-                return row, f"HATA {r.status_code}", QColor(150, 0, 0)
+            r = requests.get(
+                url,
+                timeout=(min(6, self.timeout), self.timeout),
+                headers=self._headers(use_range),
+                allow_redirects=True,
+                stream=True,
+            )
+        except requests.exceptions.Timeout:
+            return False, None, "zaman aşımı"
+        except requests.exceptions.SSLError:
+            # Bazı IPTV sertifikaları bozuk; VLC yine de oynatır → tekrar dene verify=False
+            try:
+                r = requests.get(
+                    url,
+                    timeout=(min(6, self.timeout), self.timeout),
+                    headers=self._headers(use_range),
+                    allow_redirects=True,
+                    stream=True,
+                    verify=False,
+                )
+            except Exception as e:
+                return False, None, f"ssl: {e.__class__.__name__}"
+        except requests.exceptions.ConnectionError:
+            return False, None, "bağlantı yok"
+        except Exception as e:
+            return False, None, e.__class__.__name__
+
+        code = r.status_code
+        # İlk parça (en fazla 64 KB)
+        chunk = b""
+        try:
+            for part in r.iter_content(65536):
+                if part:
+                    chunk = part
+                    break
         except Exception:
+            pass
+        try:
+            r.close()
+        except Exception:
+            pass
+
+        ct = (r.headers.get("Content-Type") or "").lower()
+        url_l = (url or "").lower()
+
+        # Açık başarı kodları
+        if code in (200, 206):
+            # HLS oynatma listesi
+            if "mpegurl" in ct or url_l.endswith(".m3u8") or url_l.endswith(".m3u"):
+                text = ""
+                try:
+                    text = chunk.decode("utf-8", "ignore")
+                except Exception:
+                    text = ""
+                if "#EXTM3U" in text or "#EXTINF" in text or "#EXT-X-" in text:
+                    return True, code, "hls"
+                # Boş liste nadiren geçici olur; yine de 200 ise temkinli AKTİF
+                if code == 200 and len(chunk) > 0:
+                    return True, code, "hls-zayif"
+            # MPEG-TS: senkron baytı 0x47
+            if chunk[:1] == b"\x47" or b"\x47" in chunk[:188]:
+                return True, code, "ts"
+            # mp4 / fmp4 imzaları
+            if b"ftyp" in chunk[:64] or b"moof" in chunk[:64] or b"soun" in chunk[:64]:
+                return True, code, "mp4"
+            # İçerik tipi medya ise
+            if any(x in ct for x in (
+                "video", "audio", "mpeg", "mp2t", "mp4", "octet-stream",
+                "application/vnd.apple", "binary",
+            )):
+                return True, code, "media-ct"
+            # Yeterli bayt geldiyse büyük ihtimalle canlı (VLC de böyle bağlanır)
+            if len(chunk) >= 256:
+                return True, code, "veri"
+            if code == 200 and len(chunk) > 0:
+                return True, code, "http200"
+            return True, code, "http200-bos"
+
+        # Yönlendirme zinciri (requests takip etti; yine de)
+        if code in (301, 302, 303, 307, 308):
+            return True, code, "yonlendirme"
+
+        # 401/403: token/referer isteyen yayınlar VLC'de açılır, düz GET'te 403 verir.
+        # Gövde medya/HLS ise AKTİF say; tamamen boşsa ŞÜPHELİ (ölü değil).
+        if code in (401, 403):
+            text = ""
+            try:
+                text = chunk.decode("utf-8", "ignore")
+            except Exception:
+                pass
+            if "#EXTM3U" in text or chunk[:1] == b"\x47" or len(chunk) >= 1024:
+                return True, code, f"korumali-{code}"
+            return False, code, f"yasak-{code}"
+
+        # 404/410 gerçekten yok
+        if code in (404, 410, 451):
+            return False, code, f"yok-{code}"
+
+        # 416 Range Not Satisfiable → Range'siz dene (üst katmanda)
+        if code == 416:
+            return False, code, "range-uyumsuz"
+
+        # 429 / 502 / 503 / 504 — IPTV CDN'lerinde ÇOK yaygın.
+        # Paralel tarama sırasında "meşgul" döner; VLC tek bağlantıyla açar.
+        # ASLA kalıcı ölü sayma.
+        if code in (429, 502, 503, 504):
+            return False, code, f"gecici-{code}"
+
+        # Diğer 4xx/5xx
+        if code and code >= 400:
+            return False, code, f"http-{code}"
+
+        return False, code, "bilinmeyen"
+
+    def _check_one(self, row, url):
+        """Tek link — birkaç strateji dener, VLC ile uyumlu sonuç üretir."""
+        if not url or not str(url).strip():
             return row, "KAPALI 🛑", QColor(100, 100, 100)
+        url = str(url).strip()
+
+        # 1) Range olmadan (asıl yöntem — VLC çoğu zaman böyle açar)
+        ok, code, detail = self._probe(url, use_range=False)
+        if ok:
+            return row, "AKTİF ✅", QColor(0, 150, 0)
+
+        # 2) Range ile (bazı sunucular Range ister)
+        if detail in ("range-uyumsuz", "bağlantı yok", "zaman aşımı", "http-403", "yasak-403"):
+            ok2, code2, detail2 = self._probe(url, use_range=True)
+            if ok2:
+                return row, "AKTİF ✅", QColor(0, 150, 0)
+            code = code2 or code
+            detail = detail2 or detail
+
+        # 3) Geçici hatalar (503/502/429/504) — 2 kez, artan bekleme
+        if detail.startswith("gecici") or detail == "zaman aşımı":
+            for bekle in (1.0, 2.0):
+                time.sleep(bekle)
+                ok3, code3, detail3 = self._probe(url, use_range=False)
+                if ok3:
+                    return row, "AKTİF ✅", QColor(0, 150, 0)
+                code = code3 or code
+                detail = detail3 or detail
+                if not (detail.startswith("gecici") or detail == "zaman aşımı"):
+                    break
+
+        # ── Sonuç sınıflandırma ──────────────────────────────────────
+        # 503/502/429/504: kullanıcı teyit etti — VLC'de çalışıyor.
+        # Ölü/HATA yazma; AKTİF say (geçici sunucu cevabı).
+        if code in (429, 502, 503, 504) or (detail and detail.startswith("gecici")):
+            return row, "AKTİF ✅", QColor(0, 150, 0)
+
+        if detail.startswith("yasak") or (code in (401, 403)):
+            return row, f"ŞÜPHELİ ⚠️ {code or ''}".strip(), QColor(180, 120, 0)
+
+        if detail.startswith("yok") or (code in (404, 410, 451)):
+            return row, f"HATA {code}", QColor(150, 0, 0)
+
+        if detail in ("bağlantı yok",) or (detail and detail.startswith("ssl")):
+            return row, "KAPALI 🛑", QColor(100, 100, 100)
+
+        # Zaman aşımı: tek başına ölü sayma (yavaş sunucu / CDN)
+        if detail == "zaman aşımı":
+            return row, "ŞÜPHELİ ⚠️ timeout", QColor(180, 120, 0)
+
+        if code:
+            # Bilinmeyen 4xx/5xx — şüpheli; toplu silmede gitmesin
+            return row, f"ŞÜPHELİ ⚠️ {code}", QColor(180, 120, 0)
+        return row, "KAPALI 🛑", QColor(100, 100, 100)
 
     def run(self):
         total  = len(self.rows_urls)
@@ -1236,11 +1426,18 @@ class LinkCheckWorker(QThread):
                 if self._stop:
                     executor.shutdown(wait=False, cancel_futures=True)
                     break
-                row, status, color = future.result()
+                try:
+                    row, status, color = future.result()
+                except Exception:
+                    row, url = futures[future]
+                    status, color = "KAPALI 🛑", QColor(100, 100, 100)
                 done += 1
                 _, url = futures[future]
 
                 if "AKTİF" in status:
+                    active += 1
+                elif "ŞÜPHELİ" in status:
+                    # ne ölü ne hata — ayrı sayma; aktif'e yakın
                     active += 1
                 elif "KAPALI" in status:
                     dead += 1
@@ -2735,7 +2932,7 @@ class IPTVEditor(QMainWindow):
     def check_links(self):
         """
         Paralel ThreadPoolExecutor ile tüm görünür satırları eş zamanlı kontrol eder.
-        Worker sayısı _link_workers özelliğiyle ayarlanabilir (varsayılan: 30).
+        Worker sayısı _link_workers özelliğiyle ayarlanabilir (varsayılan: 12).
         Bu, HER ZAMAN görünür satırların TAMAMINI yeniden kontrol eder
         (baştan başlar). Durdurulan bir kontrolü kaldığı yerden devam
         ettirmek için 'Devam Et' düğmesini kullanın.
@@ -2815,8 +3012,8 @@ class IPTVEditor(QMainWindow):
     def _kontrolu_baslat(self, rows_urls, total, devam: bool = False):
         """check_links() ve resume_check_links() için ORTAK başlatma kodu."""
         count   = len(rows_urls)
-        workers = getattr(self, "_link_workers", 30)
-        timeout = getattr(self, "_link_timeout", 8)
+        workers = getattr(self, "_link_workers", 6)
+        timeout = getattr(self, "_link_timeout", 15)
 
         filtered = count < total
         etiket = "devam ediliyor" if devam else "başladı"
@@ -2870,12 +3067,12 @@ class IPTVEditor(QMainWindow):
 
     def set_link_workers(self):
         """Eş zamanlı bağlantı (worker) sayısını kullanıcıdan al."""
-        current = getattr(self, "_link_workers", 30)
+        current = getattr(self, "_link_workers", 6)
         val, ok = QInputDialog.getInt(
             self, "Paralel Bağlantı Sayısı",
             "Eş zamanlı kontrol edilecek link sayısı:\n"
-            "(Az: daha güvenli  |  Çok: daha hızlı)\n"
-            "Önerilen: 20-50",
+            "(Az: daha güvenli — 503 azalır  |  Çok: hızlı ama sahte ölü artar)\n"
+            "Önerilen: 4-10",
             current, 1, 100, 5
         )
         if ok:
@@ -2884,7 +3081,7 @@ class IPTVEditor(QMainWindow):
 
     def set_link_timeout(self):
         """Bağlantı zaman aşımı süresini kullanıcıdan al."""
-        current = getattr(self, "_link_timeout", 8)
+        current = getattr(self, "_link_timeout", 15)
         val, ok = QInputDialog.getInt(
             self, "Zaman Aşımı (saniye)",
             "Her link için maksimum bekleme süresi (saniye):",
@@ -2903,14 +3100,22 @@ class IPTVEditor(QMainWindow):
         dead = []
         for row in range(self.table.rowCount()):
             status = self._get_cell(row, COL_STATUS)
-            if "KAPALI" in status or "HATA" in status:
+            # ŞÜPHELİ silinmez — VLC'de çalışıyor olabilir
+            if "KAPALI" in status or status.startswith("HATA"):
                 dead.append(row)
         if not dead:
-            QMessageBox.information(self, "Bilgi", "Silinecek ölü link bulunamadı.\nÖnce 'Link Kontrol' çalıştırın.")
+            QMessageBox.information(
+                self, "Bilgi",
+                "Silinecek ölü link bulunamadı.\n"
+                "Önce 'Link Kontrol' çalıştırın.\n"
+                "(ŞÜPHELİ ⚠️ olanlar silinmez — VLC'de açılıyor olabilir.)"
+            )
             return
         reply = QMessageBox.question(
             self, "Ölü Linkleri Sil",
-            f"{len(dead)} adet çalışmayan link bulundu.\nHepsini silmek istiyor musunuz?",
+            f"{len(dead)} adet çalışmayan link bulundu.\n"
+            f"(ŞÜPHELİ olanlar hariç)\n"
+            f"Hepsini silmek istiyor musunuz?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
         )
         if reply == QMessageBox.StandardButton.Yes:
@@ -2923,7 +3128,8 @@ class IPTVEditor(QMainWindow):
         found = 0
         for row in range(self.table.rowCount()):
             status = self._get_cell(row, COL_STATUS)
-            is_dead = "KAPALI" in status or "HATA" in status
+            # ŞÜPHELİ gösterilmez — VLC'de çalışıyor olabilir
+            is_dead = ("KAPALI" in status) or status.startswith("HATA")
             self.table.setRowHidden(row, not is_dead)
             if is_dead:
                 found += 1
